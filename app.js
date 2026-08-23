@@ -1,6 +1,6 @@
 ﻿'use strict';
 // ============================================================
-//  # Cloud Salah — Supabase Application Logic
+//  Cloud Salah — Supabase Application Logic
 // ============================================================
 
 const { createClient } = window.supabase;
@@ -1767,6 +1767,7 @@ async function renderAdminActivities() {
               <div class="activity-actions">
                 <button class="btn btn-secondary btn-sm" onclick="showEditActivityModal('${a.id}')">✏️ Edit</button>
                 <button class="btn btn-primary btn-sm"   onclick="showAssignModal('${a.id}')">👥 Assign</button>
+                <button class="btn btn-info btn-sm"      onclick="showAssignCollectorsModal('${a.id}')">👤 Collectors</button>
                 <button class="btn btn-danger btn-sm"    onclick="deleteActivity('${a.id}')">🗑️</button>
               </div>
             </div>`;
@@ -1878,6 +1879,40 @@ function toggleSelectAllMembers() {
   document.querySelectorAll('.memberCheck').forEach(cb => cb.checked = checked);
 }
 
+async function showAssignCollectorsModal(actId) {
+  const [{ data: act }, { data: fieldUsers }, { data: siteMembers }] = await Promise.all([
+    supa.from('activities').select('id, name, assigned_users').eq('id', actId).single(),
+    supa.from('profiles').select('id, name').eq('site_id', currentUser.site_id).eq('role', 'user').order('name'),
+    supa.from('members').select('id').eq('site_id', currentUser.site_id),
+  ]);
+  if (!act) return;
+
+  // Separate member IDs from collector IDs in assigned_users
+  const memberIdSet = new Set((siteMembers || []).map(m => m.id));
+  const collectorIds = (act.assigned_users || []).filter(id => !memberIdSet.has(id));
+
+  const listHTML = !(fieldUsers || []).length
+    ? '<p style="color:#6b7280;font-size:13px">No field users found for this site.</p>'
+    : `<div class="checkbox-group">
+        ${fieldUsers.map(u => `<label>
+          <input type="checkbox" class="collectorCheck" value="${u.id}" ${collectorIds.includes(u.id) ? 'checked' : ''}>
+          ${esc(u.name)}
+        </label>`).join('')}
+      </div>`;
+
+  showModal(`Assign Collectors — ${esc(act.name)}`,
+    `<p class="f-12" style="color:#6b7280;margin-bottom:10px">Select field users who can collect for this activity:</p>${listHTML}`,
+  async () => {
+    const selectedCollectors = [...document.querySelectorAll('.collectorCheck:checked')].map(c => c.value);
+    // Preserve existing member assignments, replace only collector assignments
+    const memberAssignments = (act.assigned_users || []).filter(id => memberIdSet.has(id));
+    const merged = [...new Set([...memberAssignments, ...selectedCollectors])];
+    const { error } = await supa.from('activities').update({ assigned_users: merged }).eq('id', actId);
+    if (error) return toast(error.message, 'error'), false;
+    toast(`${selectedCollectors.length} collector(s) assigned`, 'success'); await navigate('admin-activities'); return true;
+  });
+}
+
 function deleteActivity(actId) {
   confirmAction('Delete this activity? All associated records will be removed.', async () => {
     const { error } = await supa.from('activities').delete().eq('id', actId);
@@ -1980,10 +2015,10 @@ async function renderAdminFees() {
                     <td>
                       <div class="table-actions">
                         ${r.status !== 'paid'
-                          ? `<button class="btn btn-success btn-sm" onclick="showRecordFeeForMember('${r.act.id}','${r.member.id}','${esc(r.member.name)}',${r.totalPaid})">💰 Record</button>`
+                          ? `<button class="btn btn-success btn-sm" onclick="showRecordFeeForMember('${r.act.id}','${r.member.id}','${esc(r.member.name)}',${r.totalPaid},${r.target},'admin-fees')">💰 Record</button>`
                           : ''}
                         ${r.latestPayment
-                          ? `<button class="btn btn-secondary btn-sm" onclick="showEditFeeRecord('${r.latestPayment.id}',${r.target})">✏️ Edit</button>`
+                          ? `<button class="btn btn-secondary btn-sm" onclick="showEditFeeRecord('${r.latestPayment.id}',${r.target},'admin-fees')">✏️ Edit</button>`
                           : ''}
                       </div>
                     </td>
@@ -1997,10 +2032,11 @@ async function renderAdminFees() {
 }
 
 // Opens record payment modal pre-filled with specific member from admin view
-async function showRecordFeeForMember(actId, memberId, memberName, totalPaid = 0) {
+async function showRecordFeeForMember(actId, memberId, memberName, totalPaid = 0, uiTarget = 0, navTarget = 'admin-fees') {
   const { data: act } = await supa.from('activities').select('*').eq('id', actId).single();
   if (!act) return;
-  const target  = parseFloat(act.target_amount || 0);
+  // Use the target already computed and displayed in the UI table
+  const target = uiTarget || parseFloat(act.target_amount || 0);
   const balance = target > 0 ? Math.max(0, target - totalPaid) : 0;
   showModal(`Record Payment — ${esc(act.name)}`, `
     <div class="form-group"><label>Member</label>
@@ -2035,11 +2071,11 @@ async function showRecordFeeForMember(actId, memberId, memberName, totalPaid = 0
       target_amount: target > 0 ? target : null,
     });
     if (error) return toast(error.message, 'error'), false;
-    toast('Payment recorded!', 'success'); await navigate('admin-fees'); return true;
+    toast('Payment recorded!', 'success'); await navigate(navTarget); return true;
   });
 }
 
-async function showEditFeeRecord(recordId, targetAmt) {
+async function showEditFeeRecord(recordId, targetAmt, navTarget = 'admin-fees') {
   const { data: r } = await supa.from('fee_records')
     .select('*, member:members!member_id(name), activity:activities!activity_id(name,allow_target_edit,target_amount)')
     .eq('id', recordId).single();
@@ -2086,7 +2122,7 @@ async function showEditFeeRecord(recordId, targetAmt) {
     if (canEditTarget) updates.target_amount = newTarget > 0 ? newTarget : null;
     const { error } = await supa.from('fee_records').update(updates).eq('id', recordId);
     if (error) return toast(error.message, 'error'), false;
-    toast('Payment updated!', 'success'); await navigate('admin-fees'); return true;
+    toast('Payment updated!', 'success'); await navigate(navTarget); return true;
   });
 }
 
@@ -2205,7 +2241,7 @@ async function renderAdminReports() {
     window._rptData = { feeActs: feeActs || [], allMembers: allMembers || [], feeRecords: feeRecords || [] };
 
     el.innerHTML = `
-      <div class="panel-header"><div><h2>Reports</h2><p>Member-wise payment report across all events</p></div></div>
+      <div class="panel-header"><div><h2>Reports</h2><p>Member-wise payment report across all events</p></div><button class="btn btn-secondary" onclick="exportReportCSV()">⬇️ Export CSV</button></div>
       <div class="card">
         <div class="card-header">
           <h3>Payment Report</h3>
@@ -2283,8 +2319,8 @@ function buildReportTable(yearFilter, statusFilter) {
   if (!rows.length) return `<div style="padding:20px">${emptyState('📋', 'No members match the selected filter', '')}</div>`;
 
   const cellHTML = c => {
-    if (c === null) return `<td style="background:#f9fafb;text-align:center;color:#d1d5db">\u2014</td>`;
-    if (c.paid === 0 && c.target === 0) return `<td style="text-align:center">\u2014</td>`;
+    if (c === null) return `<td style="background:#f9fafb;text-align:center;color:#9ca3af">0</td>`;
+    if (c.paid === 0 && c.target === 0) return `<td style="text-align:center;color:#9ca3af">0</td>`;
     if (c.outstanding > 0 && c.paid === 0) return `<td style="text-align:center"><span class="badge badge-danger">₹${c.outstanding.toFixed(2)}</span></td>`;
     if (c.outstanding > 0) return `<td style="text-align:center"><span class="text-green fw-bold">₹${c.paid.toFixed(2)}</span><br><span style="color:#ef4444;font-size:11px">(₹${c.outstanding.toFixed(2)})</span></td>`;
     return `<td style="text-align:center"><span class="badge badge-success">₹${c.paid.toFixed(2)}</span></td>`;
@@ -2330,6 +2366,52 @@ function refreshAdminReport() {
   const status = document.getElementById('rptStatus')?.value || '';
   const body   = document.getElementById('reportTableBody');
   if (body) body.innerHTML = buildReportTable(year, status);
+}
+
+function exportReportCSV() {
+  const { feeActs, allMembers, feeRecords } = window._rptData || {};
+  if (!feeActs) return toast('No report data loaded', 'warning');
+  const year   = document.getElementById('rptYear')?.value   || '';
+  const status = document.getElementById('rptStatus')?.value || '';
+
+  const visibleActs = feeActs.filter(a => {
+    if (!year) return true;
+    const d = a.due_date || a.created_at;
+    return d && new Date(d).getFullYear().toString() === year;
+  });
+  const assignedIds = new Set(visibleActs.flatMap(a => a.assigned_users || []));
+  const visibleMembers = allMembers.filter(m => assignedIds.has(m.id));
+
+  const rows = visibleMembers.map(m => {
+    let totalPaid = 0, totalOutstanding = 0;
+    const cells = visibleActs.map(a => {
+      if (!(a.assigned_users || []).includes(m.id)) return null;
+      const mp   = feeRecords.filter(r => r.activity_id === a.id && r.member_id === m.id);
+      const paid = mp.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      const lat  = mp.length ? mp.sort((x, y) => new Date(y.date) - new Date(x.date))[0] : null;
+      const tgt  = parseFloat(lat?.target_amount || a.target_amount || 0);
+      const out  = tgt > 0 ? Math.max(0, tgt - paid) : 0;
+      totalPaid += paid; totalOutstanding += out;
+      return { paid, target: tgt, outstanding: out };
+    });
+    const anyAssigned = cells.some(c => c !== null);
+    const st = !anyAssigned ? 'Unpaid'
+      : totalOutstanding === 0 && totalPaid > 0 ? 'Paid'
+      : totalPaid > 0 ? 'Partial' : 'Unpaid';
+    return { m, cells, totalPaid, totalOutstanding, st };
+  }).filter(r => !status || r.st.toLowerCase() === status);
+
+  if (!rows.length) return toast('No data to export', 'warning');
+
+  const headers = ['Member', ...visibleActs.map(a => a.name), 'Total Paid', 'Outstanding', 'Status'];
+  const csvRows = rows.map(row => [
+    row.m.name,
+    ...row.cells.map(c => c === null ? '0' : c.paid.toFixed(2)),
+    row.totalPaid.toFixed(2),
+    row.totalOutstanding.toFixed(2),
+    row.st,
+  ]);
+  downloadCSV(headers, csvRows, `payment-report${year ? '-' + year : ''}.csv`);
 }
 
 // ============================================================
@@ -2390,47 +2472,101 @@ async function renderUserDashboard() {
 //  USER — FEE COLLECTION
 // ============================================================
 
+function buildUserPaymentCollections(feeActs, feeRecords, memberMap) {
+  if (!feeActs.length) return '';
+
+  const rows = [];
+  feeActs.forEach(act => {
+    (act.assigned_users || []).forEach(mId => {
+      if (!memberMap[mId]) return;
+      const member    = memberMap[mId];
+      const payments  = feeRecords.filter(r => r.activity_id === act.id && r.member_id === mId);
+      const totalPaid = payments.reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+      const latestRec = payments.length ? payments.sort((a, b) => new Date(b.date) - new Date(a.date))[0] : null;
+      const target    = parseFloat(latestRec?.target_amount || act.target_amount || 0);
+      const status    = target > 0 ? (totalPaid >= target ? 'paid' : totalPaid > 0 ? 'partial' : 'unpaid') : (payments.length > 0 ? 'paid' : 'unpaid');
+      rows.push({ member, act, payments, totalPaid, target, status, latestPayment: latestRec });
+    });
+  });
+  if (!rows.length) return '';
+
+  const totalCollected = rows.reduce((s, r) => s + r.totalPaid, 0);
+  const paidCount      = rows.filter(r => r.status === 'paid').length;
+  const unpaidCount    = rows.filter(r => r.status !== 'paid').length;
+  const statusBadge    = s => s === 'paid' ? '<span class="badge badge-success">✓ Paid</span>'
+    : s === 'partial' ? '<span class="badge badge-warning">~ Partial</span>'
+    : '<span class="badge badge-danger">✗ Unpaid</span>';
+
+  return `
+    <div class="stats-grid">
+      ${statCard('💰', 'si-green',  '₹' + totalCollected.toFixed(2), 'Total Collected')}
+      ${statCard('✅', 'si-teal',   paidCount,                        'Paid')}
+      ${statCard('⏳', 'si-yellow', unpaidCount,                      'Pending')}
+      ${statCard('👥', 'si-blue',   rows.length,                      'Total Assignments')}
+    </div>
+    <div class="card" style="margin-bottom:20px">
+      <div class="card-header"><h3>Payment Collections</h3></div>
+      <div class="card-body">
+        <div class="filters">
+          <input class="filter-grow" id="feeSearch" type="text" placeholder="🔍 Search member or event..." oninput="filterFeeTableFull()">
+          <select id="feeActF" onchange="filterFeeTableFull()">
+            <option value="">All Events</option>
+            ${feeActs.map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
+          </select>
+          <select id="feeStatusF" onchange="filterFeeTableFull()">
+            <option value="">All Status</option>
+            <option value="paid">Paid</option>
+            <option value="partial">Partial</option>
+            <option value="unpaid">Unpaid</option>
+          </select>
+        </div>
+        <div class="table-wrapper">
+          <table id="feeTable">
+            <thead><tr><th>Member</th><th>Event</th><th>Target Amt</th><th>Paid</th><th>Balance</th><th>Status</th><th>Action</th></tr></thead>
+            <tbody>
+              ${!rows.length ? `<tr><td colspan="7">${emptyState('💰', 'No members assigned', '')}</td></tr>` :
+                rows.map(r => `<tr data-act="${r.act.id}" data-status="${r.status}" data-search="${esc((r.member.name + ' ' + r.act.name).toLowerCase())}">
+                  <td><strong>${esc(r.member.name)}</strong></td>
+                  <td>${esc(r.act.name)}</td>
+                  <td>${r.target > 0 ? '₹' + r.target.toFixed(2) : '—'}</td>
+                  <td><strong class="text-green">₹${r.totalPaid.toFixed(2)}</strong></td>
+                  <td>${r.target > 0 ? '₹' + Math.max(0, r.target - r.totalPaid).toFixed(2) : '—'}</td>
+                  <td>${statusBadge(r.status)}</td>
+                  <td><div class="table-actions">
+                    ${r.status !== 'paid' ? `<button class="btn btn-success btn-sm" onclick="showRecordFeeForMember('${r.act.id}','${r.member.id}','${esc(r.member.name)}',${r.totalPaid},${r.target},'user-fees')">💰 Record</button>` : ''}
+                    ${r.latestPayment ? `<button class="btn btn-secondary btn-sm" onclick="showEditFeeRecord('${r.latestPayment.id}',${r.target},'user-fees')">✏️ Edit</button>` : ''}
+                  </div></td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>`;
+}
+
 async function renderUserFees() {
   const el = document.getElementById('user-fees');
   setLoading(el);
   try {
-    const userId = currentUser.id;
-    const [{ data: myFeeActs }, { data: myFeeRecs }] = await Promise.all([
+    const userId  = currentUser.id;
+    const siteId  = currentUser.site_id;
+    const [{ data: myFeeActs }, { data: myFeeRecs }, { data: siteFeeRecords }] = await Promise.all([
       supa.from('activities').select('*').eq('type', 'fee').contains('assigned_users', [userId]),
       supa.from('fee_records').select('*, activity:activities!activity_id(name), member:members!member_id(name)').eq('collected_by', userId).order('date', { ascending: false }),
+      siteId ? supa.from('fee_records').select('id, member_id, activity_id, amount, date, target_amount').eq('site_id', siteId).not('member_id', 'is', null).limit(10000) : Promise.resolve({ data: [] }),
     ]);
-    const actFeeMap = {};
-    (myFeeRecs || []).forEach(r => {
-      if (!actFeeMap[r.activity_id]) actFeeMap[r.activity_id] = { total: 0, count: 0 };
-      actFeeMap[r.activity_id].total += parseFloat(r.amount || 0);
-      actFeeMap[r.activity_id].count++;
-    });
+
+    // Fetch member names for the Payment Collections table
+    const allMemberIds = [...new Set((myFeeActs || []).flatMap(a => a.assigned_users || []))];
+    const { data: assignedMembers } = allMemberIds.length
+      ? await supa.from('members').select('id, name').in('id', allMemberIds).order('name')
+      : { data: [] };
+    const memberMap = Object.fromEntries((assignedMembers || []).map(m => [m.id, m]));
 
     el.innerHTML = `
       <div class="panel-header"><div><h2>Fee Collection</h2><p>Record fee payments from community members</p></div></div>
       ${!(myFeeActs || []).length ? emptyState('💰', 'No fee activities assigned', 'Your site admin will assign fee collection activities to you') : `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header"><h3>My Fee Activities</h3></div>
-          <div class="card-body">
-            <div class="activity-grid">
-              ${myFeeActs.map(a => {
-                const m = actFeeMap[a.id] || { total: 0, count: 0 };
-                return `<div class="activity-card fee">
-                  <h4>${esc(a.name)}</h4>
-                  <div class="activity-meta">
-                    <div>Amount: <strong>₹${parseFloat(a.target_amount || 0).toFixed(2)}</strong>/person</div>
-                    <div>Due: ${a.due_date ? fmtDate(a.due_date) : 'No deadline'}</div>
-                  </div>
-                  <div class="activity-stats">
-                    <span>📝 ${m.count} records</span>
-                    <span class="text-green fw-bold">₹${m.total.toFixed(2)} collected</span>
-                  </div>
-                  <button class="btn btn-success btn-sm" onclick="showRecordFeeModal('${a.id}')">+ Record Payment</button>
-                </div>`;
-              }).join('')}
-            </div>
-          </div>
-        </div>
+        ${buildUserPaymentCollections(myFeeActs || [], siteFeeRecords || [], memberMap)}
         <div class="card">
           <div class="card-header"><h3>My Recent Collections</h3></div>
           <div class="card-body table-wrapper">

@@ -1,5 +1,5 @@
 ﻿/* ====================================================
-   # Cloud Salah — Style Sheet
+   Cloud Salah — Style Sheet
    ==================================================== */
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -76,6 +76,8 @@ body {
 #loginPage .form-group input:focus { border-color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.22); }
 #loginPage .login-error { color: #fca5a5; }
 #loginPage .btn-primary { background: #2e9e6b; border-color: #2e9e6b; display: block; margin: 0; }
+.login-copyright { position: fixed; bottom: 14px; left: 0; width: 100%; text-align: center; font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.3px; }
+.login-copyright { position: fixed; bottom: 14px; left: 0; width: 100%; text-align: center; font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.3px; }
 #loginPage .btn-primary:hover { background: #237a53; border-color: #237a53; }
 
 .login-logo {
@@ -162,6 +164,8 @@ body {
 .btn-success:hover { background: #2d9249; }
 .btn-danger    { background: var(--danger);    color: white; }
 .btn-danger:hover  { background: #c62828; }
+.btn-info      { background: #0891b2; color: white; }
+.btn-info:hover    { background: #0e7490; }
 .btn-warning   { background: var(--warning);   color: white; }
 .btn-warning:hover { background: #d97706; }
 .btn-secondary { background: #f3f4f6; color: var(--text); border: 1px solid var(--border); }
@@ -187,15 +191,10 @@ body {
 }
 
 .sidebar-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 20px 18px;
+  padding: 8px 10px;
   border-bottom: 1px solid rgba(255,255,255,.07);
 }
-.sidebar-logo-icon { font-size: 28px; flex-shrink: 0; }
-.sidebar-logo h2   { color: white; font-size: 17px; font-weight: 700; line-height: 1.2; }
-.sidebar-logo span { color: var(--sidebar-text); font-size: 11px; }
+.sidebar-logo-img { width: 100%; max-width: 260px; height: auto; display: block; margin: 0; }
 
 .sidebar-user {
   display: flex;

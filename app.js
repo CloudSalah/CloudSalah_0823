@@ -161,13 +161,43 @@ function renderSidebar() {
   } else {
     // When no role is assigned show everything; when a role exists enforce its permissions
     const rd = currentUser.roleData;
-    const showFee     = !rd || rd.fee_collection;
-    const showData    = !rd || rd.data_collection;
-    const showEvents  = rd?.manage_events;
+
+    // Full site admin access — render the complete admin sidebar
+    if (rd?.site_admin_access) {
+      nav.innerHTML = `
+        <div class="nav-section">Overview</div>
+        <div class="nav-item" data-panel="admin-dashboard"  onclick="navigate('admin-dashboard')"><span class="nav-icon">📊</span>Dashboard</div>
+        <div class="nav-section">Management</div>
+        <div class="nav-item" data-panel="admin-users"      onclick="navigate('admin-users')"><span class="nav-icon">👥</span>Profile Users</div>
+        <div class="nav-item" data-panel="admin-members"    onclick="navigate('admin-members')"><span class="nav-icon">👨‍👩‍👧‍👦</span>Members</div>
+        <div class="nav-item" data-panel="admin-dependents"  onclick="navigate('admin-dependents')"><span class="nav-icon">👶</span>Dependents</div>
+        <div class="nav-item" data-panel="admin-activities" onclick="navigate('admin-activities')"><span class="nav-icon">📋</span>Manage Events</div>
+        <div class="nav-section">Finance</div>
+        <div class="nav-item" data-panel="admin-fees"       onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>
+        <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
+        <div class="nav-section">Reports</div>
+        <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
+        <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
+        <div class="nav-item" data-panel="admin-balance-sheet"  onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>
+        <div class="nav-section">Collections</div>
+        <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>`;
+      return;
+    }
+
+    const showFee      = !rd || rd.fee_collection;
+    const showData     = !rd || rd.data_collection;
+    const showEvents   = rd?.manage_events;
     const showExpenses = rd?.expenses;
+    const showMembers  = rd?.create_members;
+    const showDeps     = rd?.create_dependents;
+    const showUsers    = rd?.create_users;
     nav.innerHTML = `
       <div class="nav-section">Overview</div>
       <div class="nav-item" data-panel="user-dashboard" onclick="navigate('user-dashboard')"><span class="nav-icon">🏠</span>Dashboard</div>
+      ${(showMembers || showDeps || showUsers) ? `<div class="nav-section">Management</div>` : ''}
+      ${showUsers   ? `<div class="nav-item" data-panel="admin-users"      onclick="navigate('admin-users')"><span class="nav-icon">👥</span>Profile Users</div>` : ''}
+      ${showMembers ? `<div class="nav-item" data-panel="admin-members"    onclick="navigate('admin-members')"><span class="nav-icon">👨‍👩‍👧‍👦</span>Members</div>` : ''}
+      ${showDeps    ? `<div class="nav-item" data-panel="admin-dependents" onclick="navigate('admin-dependents')"><span class="nav-icon">👶</span>Dependents</div>` : ''}
       <div class="nav-section">My Work</div>
       ${showFee    ? `<div class="nav-item" data-panel="user-fees"    onclick="navigate('user-fees')"><span class="nav-icon">💰</span>Payment Collections</div>` : ''}
       ${showData   ? `<div class="nav-item" data-panel="user-data"    onclick="navigate('user-data')"><span class="nav-icon">📁</span>Data Collection</div>` : ''}
@@ -849,14 +879,23 @@ function roleFormHTML(r) {
       <input id="mRoleName" type="text" value="${r ? esc(r.name) : ''}" placeholder="e.g., Field Collector">
     </div>
     <div class="form-group">
-      <label style="display:block;margin-bottom:10px">Permissions</label>
+      <label style="display:block;margin-bottom:10px">Field Permissions</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        ${perm('pFee',      '💰', 'Fee Collection',       r?.fee_collection)}
-        ${perm('pData',     '📁', 'Data Collection',      r?.data_collection)}
-        ${perm('pReports',  '📈', 'View Reports',         r?.view_reports)}
-        ${perm('pEvents',   '📋', 'Manage Events',        r?.manage_events)}
-        ${perm('pExpenses', '💸', 'Expenses',             r?.expenses)}
-        ${perm('pNoLogin',  '🚫', 'Restrict Login Access', r?.restrict_login)}
+        ${perm('pFee',      '💰', 'Fee Collection',        r?.fee_collection)}
+        ${perm('pData',     '📁', 'Data Collection',       r?.data_collection)}
+        ${perm('pReports',  '📈', 'View Reports',          r?.view_reports)}
+        ${perm('pEvents',   '📋', 'Manage Events',         r?.manage_events)}
+        ${perm('pExpenses', '💸', 'Expenses',              r?.expenses)}
+        ${perm('pNoLogin',  '🚫', 'Restrict Login Access',  r?.restrict_login)}
+      </div>
+    </div>
+    <div class="form-group">
+      <label style="display:block;margin-bottom:10px">Management Access</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+        ${perm('pSiteAdmin',     '🔑', 'Full Site Admin Access', r?.site_admin_access)}
+        ${perm('pCreateMembers', '👨‍👩‍👧‍👦', 'Member Creation',        r?.create_members)}
+        ${perm('pCreateDeps',    '👶', 'Dependent Creation',      r?.create_dependents)}
+        ${perm('pCreateUsers',   '👥', 'Profile User Creation',   r?.create_users)}
       </div>
     </div>`;
 }
@@ -889,6 +928,10 @@ async function renderSARoles() {
                   <th>Manage Events</th>
                   <th>Expenses</th>
                   <th>Restrict Login</th>
+                  <th>Site Admin Access</th>
+                  <th>Member Creation</th>
+                  <th>Dependent Creation</th>
+                  <th>User Creation</th>
                   <th>Actions</th>
                 </tr>
               </thead>
@@ -901,6 +944,10 @@ async function renderSARoles() {
                   <td>${permBadge(r.manage_events)}</td>
                   <td>${permBadge(r.expenses)}</td>
                   <td>${permBadge(r.restrict_login)}</td>
+                  <td>${permBadge(r.site_admin_access)}</td>
+                  <td>${permBadge(r.create_members)}</td>
+                  <td>${permBadge(r.create_dependents)}</td>
+                  <td>${permBadge(r.create_users)}</td>
                   <td><div class="table-actions">
                     <button class="btn btn-secondary btn-sm" onclick="showEditRoleModal('${r.id}')">✏️ Edit</button>
                     <button class="btn btn-danger btn-sm"    onclick="deleteRole('${r.id}')">🗑️</button>
@@ -919,12 +966,16 @@ async function showAddRoleModal() {
     if (!name) return toast('Role name is required', 'error'), false;
     const { error } = await supa.from('roles').insert({
       name,
-      fee_collection:  document.getElementById('pFee')?.checked     || false,
-      data_collection: document.getElementById('pData')?.checked    || false,
-      view_reports:    document.getElementById('pReports')?.checked || false,
-      manage_events:   document.getElementById('pEvents')?.checked  || false,
-      expenses:        document.getElementById('pExpenses')?.checked || false,
-      restrict_login:  document.getElementById('pNoLogin')?.checked || false,
+      fee_collection:    document.getElementById('pFee')?.checked          || false,
+      data_collection:   document.getElementById('pData')?.checked         || false,
+      view_reports:      document.getElementById('pReports')?.checked      || false,
+      manage_events:     document.getElementById('pEvents')?.checked       || false,
+      expenses:          document.getElementById('pExpenses')?.checked     || false,
+      restrict_login:    document.getElementById('pNoLogin')?.checked      || false,
+      site_admin_access: document.getElementById('pSiteAdmin')?.checked    || false,
+      create_members:    document.getElementById('pCreateMembers')?.checked || false,
+      create_dependents: document.getElementById('pCreateDeps')?.checked   || false,
+      create_users:      document.getElementById('pCreateUsers')?.checked  || false,
     });
     if (error) return toast(error.message, 'error'), false;
     toast('Role created', 'success'); await navigate('sa-roles'); return true;
@@ -939,12 +990,16 @@ async function showEditRoleModal(roleId) {
     if (!name) return toast('Role name is required', 'error'), false;
     const { error } = await supa.from('roles').update({
       name,
-      fee_collection:  document.getElementById('pFee')?.checked     || false,
-      data_collection: document.getElementById('pData')?.checked    || false,
-      view_reports:    document.getElementById('pReports')?.checked || false,
-      manage_events:   document.getElementById('pEvents')?.checked  || false,
-      expenses:        document.getElementById('pExpenses')?.checked || false,
-      restrict_login:  document.getElementById('pNoLogin')?.checked || false,
+      fee_collection:    document.getElementById('pFee')?.checked          || false,
+      data_collection:   document.getElementById('pData')?.checked         || false,
+      view_reports:      document.getElementById('pReports')?.checked      || false,
+      manage_events:     document.getElementById('pEvents')?.checked       || false,
+      expenses:          document.getElementById('pExpenses')?.checked     || false,
+      restrict_login:    document.getElementById('pNoLogin')?.checked      || false,
+      site_admin_access: document.getElementById('pSiteAdmin')?.checked    || false,
+      create_members:    document.getElementById('pCreateMembers')?.checked || false,
+      create_dependents: document.getElementById('pCreateDeps')?.checked   || false,
+      create_users:      document.getElementById('pCreateUsers')?.checked  || false,
     }).eq('id', roleId);
     if (error) return toast(error.message, 'error'), false;
     toast('Role updated', 'success'); await navigate('sa-roles'); return true;

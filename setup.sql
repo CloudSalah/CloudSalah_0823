@@ -46,6 +46,12 @@ alter table public.sites add column if not exists pin_code text;
 alter table public.sites add column if not exists state    text;
 alter table public.sites add column if not exists country  text;
 
+-- New role permission columns (run when upgrading from earlier schema)
+alter table public.roles add column if not exists site_admin_access  boolean default false;
+alter table public.roles add column if not exists create_members     boolean default false;
+alter table public.roles add column if not exists create_dependents  boolean default false;
+alter table public.roles add column if not exists create_users       boolean default false;
+
 -- Circular FK: profiles.site_id → sites.id (added after sites table exists)
 do $$
 begin

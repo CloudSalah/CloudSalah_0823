@@ -142,15 +142,15 @@ function renderSidebar() {
       <div class="nav-item" data-panel="admin-members"    onclick="navigate('admin-members')"><span class="nav-icon">👨‍👩‍👧‍👦</span>Members</div>
       <div class="nav-item" data-panel="admin-dependents"  onclick="navigate('admin-dependents')"><span class="nav-icon">👶</span>Dependents</div>
       <div class="nav-item" data-panel="admin-activities" onclick="navigate('admin-activities')"><span class="nav-icon">📋</span>Manage Events</div>
-      <div class="nav-section">Collections</div>
+      <div class="nav-section">Finance</div>
       <div class="nav-item" data-panel="admin-fees"       onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>
-      <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>
+      <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
       <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
       <div class="nav-item" data-panel="admin-balance-sheet"  onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>
-      <div class="nav-section">Finance</div>
-      <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>`;
+      <div class="nav-section">Collections</div>
+      <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>`;
   } else if (role === 'rangeadmin') {
     nav.innerHTML = `
       <div class="nav-section">Overview</div>

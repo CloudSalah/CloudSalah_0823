@@ -1,0 +1,133 @@
+<!DOCTYPE html>
+<html lang="en">
+<head> 
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudeSalah — Community Management System</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+</head>
+<body>
+
+<!-- ===== FIRST-RUN SETUP PAGE ===== -->
+<div id="setupPage" class="page">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-icon">⚙️</div>
+      <h1>CloudeSalah</h1>
+      <p>First-Time Setup — Create Super Admin</p>
+    </div>
+    <form id="setupForm">
+      <div class="form-group"><label>Full Name *</label><input id="setupName" type="text" placeholder="Your full name" required></div>
+      <div class="form-group"><label>Email *</label><input id="setupEmail" type="email" placeholder="user@example.com" required></div>
+      <div class="form-group"><label>Password *</label><input id="setupPassword" type="password" placeholder="Min 6 characters" required></div>
+      <div class="form-group"><label>Confirm Password *</label><input id="setupConfirm" type="password" placeholder="Confirm password" required></div>
+      <div id="setupError" class="login-error"></div>
+      <button type="submit" class="btn btn-primary btn-full">Create Super Admin →</button>
+      <p style="text-align:center;margin-top:14px;font-size:13px;color:#6b7280">
+        Already set up? <a href="#" onclick="event.preventDefault();showPage('loginPage')" style="color:var(--primary)">Sign in</a>
+      </p>
+    </form>
+  </div>
+</div>
+
+<!-- ===== LOGIN PAGE ===== -->
+<div id="loginPage" class="page">
+  <div class="login-box">
+    <div class="login-logo">
+      <div class="login-icon">🏘️</div>
+      <h1>CloudeSalah</h1>
+      <p>Community Management System</p>
+    </div>
+    <form id="loginForm">
+      <div class="form-group">
+        <label>User Name</label>
+        <input id="loginEmail" type="text" placeholder="Enter your user name" required autocomplete="username">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input id="loginPassword" type="password" placeholder="Enter your password" required autocomplete="current-password">
+      </div>
+      <div id="loginError" class="login-error"></div>
+      <button type="submit" class="btn btn-primary btn-full">Sign In →</button>
+    </form>
+  </div>
+</div>
+
+<!-- ===== APP SHELL ===== -->
+<div id="appShell" class="page">
+
+  <aside id="sidebar">
+    <div class="sidebar-logo">
+      <span class="sidebar-logo-icon">🏘️</span>
+      <div>
+        <h2>CloudeSalah</h2>
+        <span>Community Management System</span>
+      </div>
+    </div>
+    <div class="sidebar-user">
+      <div class="user-avatar" id="sidebarUserAvatar">SA</div>
+      <div class="user-info">
+        <strong id="sidebarUserName">User</strong>
+        <span id="sidebarUserRole" class="role-badge">role</span>
+      </div>
+    </div>
+    <nav id="sidebarNav"></nav>
+    <div class="sidebar-footer">
+      <button class="btn btn-logout btn-full" onclick="logout()">🚪 Sign Out</button>
+    </div>
+  </aside>
+
+  <main id="mainContent">
+    <!-- Super Admin Panels -->
+    <div id="sa-dashboard"    class="panel"></div>
+    <div id="sa-sites"        class="panel"></div>
+    <div id="sa-ranges"       class="panel"></div>
+    <div id="sa-admins"       class="panel"></div>
+    <div id="sa-rangeadmins"  class="panel"></div>
+    <div id="sa-roles"        class="panel"></div>
+    <div id="sa-users"        class="panel"></div>
+    <div id="sa-reports"      class="panel"></div>
+    <!-- Range Admin Panels -->
+    <div id="rangeadmin-dashboard" class="panel"></div>
+    <div id="ra-sites"             class="panel"></div>
+    <div id="ra-admins"            class="panel"></div>
+    <!-- Site Admin Panels -->
+    <div id="admin-dashboard"   class="panel"></div>
+    <div id="admin-users"       class="panel"></div>
+    <div id="admin-members"     class="panel"></div>
+    <div id="admin-dependents"  class="panel"></div>
+    <div id="admin-activities"  class="panel"></div>
+    <div id="admin-fees"        class="panel"></div>
+    <div id="admin-data"        class="panel"></div>
+    <div id="admin-reports"     class="panel"></div>
+    <!-- User Panels -->
+    <div id="user-dashboard" class="panel"></div>
+    <div id="user-fees"      class="panel"></div>
+    <div id="user-data"      class="panel"></div>
+    <div id="user-history"   class="panel"></div>
+  </main>
+</div>
+
+<!-- ===== MODAL ===== -->
+<div id="modal" class="modal-overlay">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3 id="modalTitle">Dialog</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body" id="modalBody"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+      <button id="modalSaveBtn" class="btn btn-primary" onclick="saveModal()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TOAST ===== -->
+<div id="toastContainer"></div>
+
+<script src="app.js"></script>
+</body>
+</html>

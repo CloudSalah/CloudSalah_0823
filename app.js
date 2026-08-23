@@ -25,7 +25,7 @@ async function login(email, password) {
   const hash = await hashPw(password);
   const { data, error } = await supa
     .from('profiles')
-    .select('*')
+    .select('*, roleData:roles!role_id(*)')
     .eq('username', email.toLowerCase().trim())
     .eq('password_hash', hash)
     .maybeSingle();
@@ -44,7 +44,7 @@ function logout() {
 async function restoreSession() {
   const id = sessionStorage.getItem('cPro_uid');
   if (!id) return false;
-  const { data } = await supa.from('profiles').select('*').eq('id', id).maybeSingle();
+  const { data } = await supa.from('profiles').select('*, roleData:roles!role_id(*)').eq('id', id).maybeSingle();
   if (!data) return false;
   currentUser = data;
   return true;
@@ -97,6 +97,7 @@ async function renderPanel(id) {
     'user-fees':        renderUserFees,
     'user-data':        renderUserData,
     'user-history':     renderUserHistory,
+    'user-events':      renderUserEvents,
   };
   if (map[id]) await map[id]();
 }
@@ -150,13 +151,19 @@ function renderSidebar() {
       <div class="nav-item" data-panel="ra-sites"  onclick="navigate('ra-sites')"><span class="nav-icon">🏘️</span>Sites</div>
       <div class="nav-item" data-panel="ra-admins" onclick="navigate('ra-admins')"><span class="nav-icon">👤</span>Site Admins</div>`;
   } else {
+    // When no role is assigned show everything; when a role exists enforce its permissions
+    const rd = currentUser.roleData;
+    const showFee     = !rd || rd.fee_collection;
+    const showData    = !rd || rd.data_collection;
+    const showEvents  = rd?.manage_events;
     nav.innerHTML = `
       <div class="nav-section">Overview</div>
       <div class="nav-item" data-panel="user-dashboard" onclick="navigate('user-dashboard')"><span class="nav-icon">🏠</span>Dashboard</div>
       <div class="nav-section">My Work</div>
-      <div class="nav-item" data-panel="user-fees"    onclick="navigate('user-fees')"><span class="nav-icon">💰</span>Fee Collection</div>
-      <div class="nav-item" data-panel="user-data"    onclick="navigate('user-data')"><span class="nav-icon">📁</span>Data Collection</div>
-      <div class="nav-item" data-panel="user-history" onclick="navigate('user-history')"><span class="nav-icon">🕑</span>My History</div>`;
+      ${showFee    ? `<div class="nav-item" data-panel="user-fees"    onclick="navigate('user-fees')"><span class="nav-icon">💰</span>Payment Collections</div>` : ''}
+      ${showData   ? `<div class="nav-item" data-panel="user-data"    onclick="navigate('user-data')"><span class="nav-icon">📁</span>Data Collection</div>` : ''}
+      <div class="nav-item" data-panel="user-history" onclick="navigate('user-history')"><span class="nav-icon">🕑</span>My History</div>
+      ${showEvents ? `<div class="nav-item" data-panel="user-events"  onclick="navigate('user-events')"><span class="nav-icon">📋</span>Manage Events</div>` : ''}`;
   }
 }
 
@@ -836,6 +843,7 @@ function roleFormHTML(r) {
         ${perm('pFee',      '💰', 'Fee Collection',       r?.fee_collection)}
         ${perm('pData',     '📁', 'Data Collection',      r?.data_collection)}
         ${perm('pReports',  '📈', 'View Reports',         r?.view_reports)}
+        ${perm('pEvents',   '📋', 'Manage Events',        r?.manage_events)}
         ${perm('pNoLogin',  '🚫', 'Restrict Login Access', r?.restrict_login)}
       </div>
     </div>`;
@@ -866,6 +874,7 @@ async function renderSARoles() {
                   <th>Fee Collection</th>
                   <th>Data Collection</th>
                   <th>View Reports</th>
+                  <th>Manage Events</th>
                   <th>Restrict Login</th>
                   <th>Actions</th>
                 </tr>
@@ -876,6 +885,7 @@ async function renderSARoles() {
                   <td>${permBadge(r.fee_collection)}</td>
                   <td>${permBadge(r.data_collection)}</td>
                   <td>${permBadge(r.view_reports)}</td>
+                  <td>${permBadge(r.manage_events)}</td>
                   <td>${permBadge(r.restrict_login)}</td>
                   <td><div class="table-actions">
                     <button class="btn btn-secondary btn-sm" onclick="showEditRoleModal('${r.id}')">✏️ Edit</button>
@@ -898,6 +908,7 @@ async function showAddRoleModal() {
       fee_collection:  document.getElementById('pFee')?.checked     || false,
       data_collection: document.getElementById('pData')?.checked    || false,
       view_reports:    document.getElementById('pReports')?.checked || false,
+      manage_events:   document.getElementById('pEvents')?.checked  || false,
       restrict_login:  document.getElementById('pNoLogin')?.checked || false,
     });
     if (error) return toast(error.message, 'error'), false;
@@ -916,6 +927,7 @@ async function showEditRoleModal(roleId) {
       fee_collection:  document.getElementById('pFee')?.checked     || false,
       data_collection: document.getElementById('pData')?.checked    || false,
       view_reports:    document.getElementById('pReports')?.checked || false,
+      manage_events:   document.getElementById('pEvents')?.checked  || false,
       restrict_login:  document.getElementById('pNoLogin')?.checked || false,
     }).eq('id', roleId);
     if (error) return toast(error.message, 'error'), false;
@@ -1718,8 +1730,14 @@ function deleteDependent(depId) {
 //  SITE ADMIN — ACTIVITIES
 // ============================================================
 
-async function renderAdminActivities() {
-  const el = document.getElementById('admin-activities');
+async function renderUserEvents() {
+  window._actNavTarget = 'user-events';
+  await renderAdminActivities('user-events');
+}
+
+async function renderAdminActivities(elId = 'admin-activities') {
+  window._actNavTarget = elId;
+  const el = document.getElementById(elId);
   const siteId = currentUser.site_id;
   if (!siteId) { el.innerHTML = noSiteMsg(); return; }
   setLoading(el);
@@ -1813,7 +1831,7 @@ async function showAddActivityModal() {
       assigned_users:   [],
     });
     if (error) return toast(error.message, 'error'), false;
-    toast('Activity created', 'success'); await navigate('admin-activities'); return true;
+    toast('Activity created', 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
   });
 }
 
@@ -1831,7 +1849,7 @@ async function showEditActivityModal(actId) {
       description:      val('mActDesc') || null,
     }).eq('id', actId);
     if (error) return toast(error.message, 'error'), false;
-    toast('Activity updated', 'success'); await navigate('admin-activities'); return true;
+    toast('Activity updated', 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
   });
 }
 
@@ -1870,7 +1888,7 @@ async function showAssignModal(actId) {
     const selected = [...document.querySelectorAll('.memberCheck:checked')].map(c => c.value);
     const { error } = await supa.from('activities').update({ assigned_users: selected }).eq('id', actId);
     if (error) return toast(error.message, 'error'), false;
-    toast(`${selected.length} member(s) assigned`, 'success'); await navigate('admin-activities'); return true;
+    toast(`${selected.length} member(s) assigned`, 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
   });
 }
 
@@ -1909,7 +1927,7 @@ async function showAssignCollectorsModal(actId) {
     const merged = [...new Set([...memberAssignments, ...selectedCollectors])];
     const { error } = await supa.from('activities').update({ assigned_users: merged }).eq('id', actId);
     if (error) return toast(error.message, 'error'), false;
-    toast(`${selectedCollectors.length} collector(s) assigned`, 'success'); await navigate('admin-activities'); return true;
+    toast(`${selectedCollectors.length} collector(s) assigned`, 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
   });
 }
 
@@ -1917,7 +1935,7 @@ function deleteActivity(actId) {
   confirmAction('Delete this activity? All associated records will be removed.', async () => {
     const { error } = await supa.from('activities').delete().eq('id', actId);
     if (error) return toast(error.message, 'error');
-    toast('Activity deleted', 'success'); await navigate('admin-activities');
+    toast('Activity deleted', 'success'); await navigate(window._actNavTarget || 'admin-activities');
   });
 }
 
@@ -2423,8 +2441,7 @@ async function renderUserDashboard() {
   setLoading(el);
   try {
     const userId = currentUser.id;
-    const [{ data: myActs }, { data: myFees }, { data: myDatas }, { data: site }] = await Promise.all([
-      supa.from('activities').select('*').contains('assigned_users', [userId]),
+    const [{ data: myFees }, { data: myDatas }, { data: site }] = await Promise.all([
       supa.from('fee_records').select('amount').eq('collected_by', userId),
       supa.from('data_records').select('id').eq('collected_by', userId),
       currentUser.site_id ? supa.from('sites').select('name').eq('id', currentUser.site_id).single() : Promise.resolve({ data: null }),
@@ -2434,36 +2451,9 @@ async function renderUserDashboard() {
     el.innerHTML = `
       <div class="panel-header"><div><h2>My Dashboard</h2><p>${site?.name ? esc(site.name) : 'Not assigned to a site'}</p></div></div>
       <div class="stats-grid">
-        ${statCard('📋', 'si-yellow', (myActs  || []).length,      'My Activities')}
         ${statCard('💰', 'si-green',  '₹' + totalFees.toFixed(2),  'Fees Collected')}
         ${statCard('📝', 'si-blue',   (myFees  || []).length,      'Fee Transactions')}
         ${statCard('📁', 'si-purple', (myDatas || []).length,      'Data Records')}
-      </div>
-      <div class="card">
-        <div class="card-header"><h3>My Assigned Activities</h3></div>
-        <div class="card-body">
-          ${!(myActs || []).length
-            ? emptyState('📋', 'No activities assigned yet', 'Your site admin will assign activities to you')
-            : `<div class="activity-grid">
-                ${myActs.map(a => {
-                  const overdue = a.due_date && new Date(a.due_date) < new Date();
-                  const panel   = a.type === 'fee' ? 'user-fees' : 'user-data';
-                  return `<div class="activity-card ${a.type} ${overdue ? 'overdue' : ''}">
-                    <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
-                      <h4>${esc(a.name)}</h4>
-                      <span class="badge ${a.type === 'fee' ? 'badge-success' : 'badge-info'}">${a.type === 'fee' ? '💰 Fee' : '📁 Data'}</span>
-                    </div>
-                    <div class="activity-meta">
-                      ${a.type === 'fee' ? `<div>Amount: <strong>₹${parseFloat(a.target_amount || 0).toFixed(2)}</strong>/person</div>` : ''}
-                      <div>Due: ${a.due_date ? fmtDate(a.due_date) : 'No deadline'} ${overdue ? '<span class="badge badge-danger">Overdue</span>' : ''}</div>
-                    </div>
-                    <button class="btn btn-primary btn-sm" onclick="navigate('${panel}')">
-                      ${a.type === 'fee' ? '💰 Collect Fee' : '📁 Record Data'}
-                    </button>
-                  </div>`;
-                }).join('')}
-              </div>`}
-        </div>
       </div>`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }

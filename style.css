@@ -264,6 +264,23 @@ body {
    ==================================================== */
 #mainContent { flex: 1; overflow-y: auto; background: var(--bg); }
 
+#admin-dashboard { position: relative; }
+#admin-dashboard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 15cm;
+  height: 10cm;
+  background: url('images/site_574285.png') center/cover no-repeat;
+  -webkit-mask-image: linear-gradient(to bottom left, rgba(0,0,0,0.75) 30%, transparent 85%);
+  mask-image: linear-gradient(to bottom left, rgba(0,0,0,0.75) 30%, transparent 85%);
+  pointer-events: none;
+  z-index: 0;
+  border-radius: 0 0 0 12px;
+}
+#admin-dashboard > * { position: relative; z-index: 1; }
+
 .panel { display: none; padding: 28px; }
 .panel.active { display: block; }
 

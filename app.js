@@ -1,6 +1,6 @@
 ﻿'use strict';
 // ============================================================
-//  CloudeSalah — Supabase Application Logic
+//  # Cloud Salah — Supabase Application Logic
 // ============================================================
 
 const { createClient } = window.supabase;

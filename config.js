@@ -1,5 +1,5 @@
-// ============================================================
-//  CloudeSalah — Supabase Configuration
+﻿// ============================================================
+//  # Cloud Salah — Supabase Configuration
 //  Get these values from:
 //  Supabase Dashboard → Your Project → Settings → API
 // ============================================================

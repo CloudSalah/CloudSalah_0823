@@ -1,5 +1,5 @@
-/* ====================================================
-   CloudeSalah — Style Sheet
+﻿/* ====================================================
+   # Cloud Salah — Style Sheet
    ==================================================== */
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
@@ -36,7 +36,15 @@ body {
 /* ====================================================
    LOGIN
    ==================================================== */
-#loginPage,
+#loginPage {
+  min-height: 100vh;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 18px 80px 18px 18px;
+  box-sizing: border-box;
+  background: url('images/login_template.png') center/100% 100% no-repeat;
+}
+
 #setupPage {
   min-height: 100vh;
   align-items: center;
@@ -47,15 +55,35 @@ body {
 }
 
 .login-box {
-  background: white;
-  border-radius: 16px;
+  background: transparent;
   padding: 32px 36px;
-  width: 400px;
+  width: 420px;
   max-width: 100%;
-  box-shadow: 0 20px 60px rgba(0,0,0,.3);
 }
 
-.login-logo { text-align: center; margin-bottom: 18px; }
+#loginPage .login-box {
+  border: 1px solid rgba(255,255,255,0.45);
+  border-radius: 14px;
+}
+
+#loginPage .form-group label { color: rgba(255,255,255,0.9); }
+#loginPage .form-group input {
+  background: rgba(255,255,255,0.15);
+  border: 1.5px solid rgba(255,255,255,0.35);
+  color: white;
+}
+#loginPage .form-group input::placeholder { color: rgba(255,255,255,0.5); }
+#loginPage .form-group input:focus { border-color: rgba(255,255,255,0.8); background: rgba(255,255,255,0.22); }
+#loginPage .login-error { color: #fca5a5; }
+#loginPage .btn-primary { background: #2e9e6b; border-color: #2e9e6b; display: block; margin: 0; }
+#loginPage .btn-primary:hover { background: #237a53; border-color: #237a53; }
+
+.login-logo {
+  text-align: center;
+  margin-bottom: 18px;
+}
+.login-logo-img { width: 100%; max-width: 380px; height: auto; display: block; margin: 0 auto; }
+.login-tagline { font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.85); margin-top: 8px; letter-spacing: 0.3px; }
 .login-icon { font-size: 36px; margin-bottom: 6px; }
 .login-logo h1 { font-size: 22px; font-weight: 700; color: var(--primary); }
 .login-logo p  { font-size: 12px; color: var(--text-light); margin-top: 3px; }

@@ -1339,8 +1339,14 @@ async function renderAdminDashboard() {
 
     const isStateItem = item => {
       const stateVal = item.State !== undefined ? item.State : item.state;
+      if (stateVal === null || stateVal === undefined) {
+        // If State column is NULL but site_id and range_id are also NULL, consider it a State Committee item
+        if (!item.site_id && !item.range_id) return true;
+        return false;
+      }
       if (typeof stateVal === 'boolean') return stateVal;
-      if (typeof stateVal === 'string') return stateVal.toLowerCase() === 'true' || stateVal.toLowerCase() === 'state';
+      if (typeof stateVal === 'number') return stateVal > 0;
+      if (typeof stateVal === 'string') return stateVal.trim().length > 0 && stateVal.toLowerCase() !== 'false' && stateVal !== '0';
       return Boolean(stateVal);
     };
 

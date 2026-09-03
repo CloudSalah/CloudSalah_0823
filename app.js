@@ -1869,15 +1869,18 @@ async function renderAdminActivities(elId = 'admin-activities') {
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 
-function activityFormHTML(a) {
-  const isFee = !a || a.type === 'fee';
+function activityFormHTML(a, eventTypes = null) {
+  const isFee = eventTypes ? false : (!a || a.type === 'fee');
+  const typeOptions = eventTypes
+    ? `<option value="" selected disabled>Select type</option>${eventTypes.map(eventType => `<option value="${esc(eventType.type)}">${esc(eventType.type)}</option>`).join('')}`
+    : `<option value="fee" ${isFee ? 'selected' : ''}>💰 Fee Collection</option>
+        <option value="data" ${!isFee ? 'selected' : ''}>📁 Data Collection</option>`;
   return `
     <div class="form-group"><label>Activity Name *</label>
       <input id="mActName" type="text" value="${a ? esc(a.name) : ''}" placeholder="e.g., Monthly Maintenance Fee"></div>
     <div class="form-group"><label>Type *</label>
       <select id="mActType" onchange="toggleFeeField()">
-        <option value="fee"  ${isFee ? 'selected' : ''}>💰 Fee Collection</option>
-        <option value="data" ${!isFee ? 'selected' : ''}>📁 Data Collection</option>
+        ${typeOptions}
       </select></div>
     <div id="feeAmountField" class="form-group" ${!isFee ? 'style="display:none"' : ''}>
       <label>Target Amount per Person ($)</label>
@@ -1894,11 +1897,19 @@ function activityFormHTML(a) {
 }
 
 async function showAddActivityModal() {
-  showModal('Create Activity', activityFormHTML(null), async () => {
+  const { data: eventTypes, error } = await supa.from('event_types').select('id, type').order('id');
+  if (error) return toast(error.message, 'error');
+  showModal('Create Activity', activityFormHTML(null, eventTypes || []), async () => {
     const name = val('mActName'), type = val('mActType');
+    const selectedEventType = eventTypes.find(eventType => eventType.type === type);
+    const typeId = selectedEventType?.id;
+    if (!type) return toast('Activity type is required', 'error'), false;
+    if (!typeId) return toast('Invalid activity type selected', 'error'), false;
     if (!name) return toast('Activity name is required', 'error'), false;
     const { error } = await supa.from('activities').insert({
-      name, type, site_id: currentUser.site_id,
+      name, type: typeId, site_id: currentUser.site_id,
+      is_donation_event: Number(typeId) === 3,
+      is_association_event: Number(typeId) === 4,
       target_amount:    type === 'fee' ? parseFloat(val('mActAmount') || 0) : null,
       allow_target_edit: type === 'fee' ? (document.getElementById('mAllowTargetEdit')?.checked || false) : false,
       due_date:         val('mActDue') || null,

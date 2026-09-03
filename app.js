@@ -1577,7 +1577,7 @@ function memberRecordFormHTML(m) {
       <input id="mMemberPhone" type="tel" value="${m ? esc(m.phone || '') : ''}" placeholder="Phone number">
     </div>
     <div class="form-group form-group-checkbox">
-      <label class="checkbox-label"><input type="checkbox" id="mMemberIsCommittee" onchange="toggleMemberRecordCommittee()" ${isCommittee ? 'checked' : ''}> Is Committee Member?</label>
+      <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:600;user-select:none"><input type="checkbox" id="mMemberIsCommittee" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" onchange="toggleMemberRecordCommittee()" ${isCommittee ? 'checked' : ''}> Is Committee Member?</label>
     </div>
     <div id="memberDesignationGroup" class="form-group" style="${isCommittee ? '' : 'display:none'}">
       <label>Designation *</label>
@@ -1876,7 +1876,7 @@ function activityFormHTML(a, eventTypes = null) {
       <label>Target Amount per Person ($)</label>
       <input id="mActAmount" type="number" min="0" step="0.01" value="${a && a.target_amount ? a.target_amount : ''}" placeholder="0.00"></div>
     <div id="feeAllowEditField" class="form-group form-group-checkbox" ${!isFee ? 'style="display:none"' : ''}>
-      <label class="checkbox-label"><input type="checkbox" id="mAllowTargetEdit" ${a?.allow_target_edit ? 'checked' : ''}> Allow target amount update in Payment Edit</label></div>
+      <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:500;user-select:none"><input type="checkbox" id="mAllowTargetEdit" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" ${a?.allow_target_edit ? 'checked' : ''}> Allow target amount update in Payment Edit</label></div>
     <div class="form-group"><label>Due Date</label>
       <input id="mActDue" type="date" value="${a && a.due_date ? a.due_date : ''}"></div>
     <div class="form-group"><label>Description</label>

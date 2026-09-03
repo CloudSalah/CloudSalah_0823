@@ -134,16 +134,17 @@ body {
 
 .form-group input[type="checkbox"],
 .form-group input[type="radio"] {
-  width: 16px;
-  height: 16px;
-  min-width: 16px;
-  padding: 0;
-  margin: 0;
-  border: none;
-  background: transparent;
+  width: 16px !important;
+  height: 16px !important;
+  min-width: 16px !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  border: none !important;
+  background: transparent !important;
   accent-color: var(--primary);
   cursor: pointer;
   flex-shrink: 0;
+  display: inline-block !important;
 }
 
 .form-group-checkbox {
@@ -154,11 +155,11 @@ body {
 
 .form-group-checkbox label,
 .form-group label.checkbox-label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 8px !important;
   cursor: pointer;
-  margin-bottom: 0;
+  margin-bottom: 0 !important;
   font-size: 13px;
   font-weight: 500;
   color: var(--text);

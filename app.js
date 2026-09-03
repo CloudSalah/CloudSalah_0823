@@ -1053,7 +1053,8 @@ async function renderRangeAdminDashboard() {
                 <span style="min-width:120px;font-weight:600;color:#6b7280">${k}</span>
                 <span>${esc(v)}</span></div>`).join('')}
           </div>
-        </div>`}`;
+        </div>`}
+      <button class="btn btn-primary" style="position:fixed;right:24px;bottom:24px;z-index:10;box-shadow:0 6px 18px rgba(0,0,0,.2)" onclick="showDonationModal()">＋ Donation</button>`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 
@@ -1452,8 +1453,7 @@ function profileFormBody(roles, members, u = null) {
     </div>
     <div class="form-group">
       <label>${u ? 'New Password <span style="font-weight:400;color:#9ca3af">(leave blank to keep)</span>' : 'Password'}</label>
-      <input id="mPassword" type="password" placeholder="${u ? 'New password' : 'Min 6 characters'}"
-        >
+      <input id="mPassword" type="password" placeholder="${u ? 'New password' : 'Min 6 characters'}">
     </div>`;
 }
 
@@ -1500,7 +1500,6 @@ async function showEditUserModal(userId) {
     if (!selectedMember) return toast('Invalid member selected', 'error'), false;
     if (!username) return toast('User name is required', 'error'), false;
     if (pw && pw.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
-
     const updates = {
       mem_id: memberId,
       name: selectedMember.name,
@@ -1828,7 +1827,7 @@ async function renderAdminActivities(elId = 'admin-activities') {
         <div class="activity-grid">
           ${activities.map(a => {
             const type = String(eventTypeMap[a.type] || a.type).toLowerCase();
-            const isFee = type === 'fee';
+            const isFee = type === 'fee' || Number(a.type) === 1;
             const isDonationEvent = a.is_donation_event || Number(a.type) === 3;
             const assigned  = (a.assigned_users || []).length;
             const records   = isFee ? (feeCountMap[a.id] || 0) : (dataCountMap[a.id] || 0);
@@ -1863,7 +1862,7 @@ async function renderAdminActivities(elId = 'admin-activities') {
 
 function activityFormHTML(a, eventTypes = null) {
   const isFee = eventTypes
-    ? Number(a?.type) === 1
+    ? (a ? Number(a.type) === 1 : true)
     : String(a?.type || '').toLowerCase() === 'fee';
   const typeOptions = eventTypes
     ? `<option value="" ${a ? '' : 'selected'} disabled>Select type</option>${eventTypes.map(eventType => `<option value="${eventType.id}" ${String(eventType.id) === String(a?.type) ? 'selected' : ''}>${esc(eventType.type)}</option>`).join('')}`

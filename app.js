@@ -1296,7 +1296,7 @@ async function renderAdminDashboard() {
   }
   setLoading(el);
   try {
-    const [{ data: site }, { count: usersCount }, { count: actsCount }, { data: feeRecs }, { count: dataCount }, { data: expRecs }, { data: committeeMembers }] = await Promise.all([
+    const [{ data: site }, { count: usersCount }, { count: actsCount }, { data: feeRecs }, { count: dataCount }, { data: expRecs }, { data: committeeMembers }, { data: boardList }] = await Promise.all([
       supa.from('sites').select('name, address').eq('id', siteId).single(),
       supa.from('profiles').select('*', { count: 'exact', head: true }).eq('site_id', siteId).eq('role', 'user'),
       supa.from('activities').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
@@ -1304,76 +1304,118 @@ async function renderAdminDashboard() {
       supa.from('data_records').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
       supa.from('expenses').select('amount').eq('site_id', siteId),
       supa.from('members').select('*').eq('site_id', siteId).eq('is_community_member', true),
+      supa.from('board_committee_list').select('*').or(`site_id.eq.${siteId},site_id.is.null`),
     ]);
     const totalFees = (feeRecs || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
     const totalExp  = (expRecs || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
 
-    const validCommitteeMembers = (committeeMembers || []).filter(m => Boolean(m.is_community_member));
-    const orderedMembers = validCommitteeMembers.filter(m => m.dashboard_view_order !== null && m.dashboard_view_order !== undefined && !isNaN(m.dashboard_view_order));
-    
-    let membersToDisplay = [];
-
-    if (orderedMembers.length > 0) {
-      orderedMembers.sort((a, b) => parseInt(a.dashboard_view_order, 10) - parseInt(b.dashboard_view_order, 10));
-      membersToDisplay = orderedMembers.map(m => ({
-        member: m,
-        roleTitle: m.designation || 'Committee Member'
-      }));
-    } else {
-      const defaultRoles = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Committee Member'];
-      const assignedMembers = validCommitteeMembers.map(m => ({ ...m, _used: false }));
-
-      membersToDisplay = defaultRoles.map((defaultRole) => {
-        let member = assignedMembers.find(m => !m._used && String(m.designation || '').toLowerCase() === defaultRole.toLowerCase());
-        if (!member) {
-          member = assignedMembers.find(m => !m._used);
-        }
-        if (member) member._used = true;
-        return {
-          member: member || null,
-          roleTitle: member?.designation || defaultRole
-        };
-      });
-    }
-
     const getInitials = n => (n || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
 
-    const committeeHTML = membersToDisplay.map(slot => {
-      const m = slot.member;
-      const roleTitle = slot.roleTitle;
-      if (m) {
-        const initials = getInitials(m.name);
-        const photoContent = m.photo_url
-          ? `<img src="${esc(m.photo_url)}" alt="${esc(m.name)}" class="stamp-photo-img" onerror="this.outerHTML='<div class=\'stamp-photo-placeholder\'>${initials}</div>'">`
+    const renderBoardCards = (items) => {
+      if (!items || !items.length) return `<p style="color:var(--text-light);font-size:13px;text-align:center;padding:10px;width:100%">No board members listed</p>`;
+      return items.map(item => {
+        const name = item.Name || item.name || item.member_name || item.person_name || '—';
+        const roleTitle = item.Designation || item.designation || 'Board Member';
+        const photoUrl = item.photo_url || item.photo || item.image || null;
+        const initials = getInitials(name);
+        const photoContent = photoUrl
+          ? `<img src="${esc(photoUrl)}" alt="${esc(name)}" class="stamp-photo-img" onerror="this.outerHTML='<div class=\'stamp-photo-placeholder\'>${initials}</div>'">`
           : `<div class="stamp-photo-placeholder">${initials}</div>`;
         return `
-          <div class="committee-stamp-card" onclick="showEditMemberRecordModal('${m.id}')" title="Click to edit member details">
+          <div class="committee-stamp-card">
             <div class="stamp-photo-frame">${photoContent}</div>
-            <div class="member-name">${esc(m.name)}</div>
+            <div class="member-name">${esc(name)}</div>
             <div class="member-role">${esc(roleTitle)}</div>
           </div>`;
+      }).join('');
+    };
+
+    const boardItems = (boardList || []).slice();
+    boardItems.sort((a, b) => {
+      const ordA = a.list_order !== null && a.list_order !== undefined ? parseInt(a.list_order, 10) : 9999;
+      const ordB = b.list_order !== null && b.list_order !== undefined ? parseInt(b.list_order, 10) : 9999;
+      return ordA - ordB;
+    });
+
+    const isStateItem = item => {
+      const stateVal = item.State !== undefined ? item.State : item.state;
+      if (typeof stateVal === 'boolean') return stateVal;
+      if (typeof stateVal === 'string') return stateVal.toLowerCase() === 'true' || stateVal.toLowerCase() === 'state';
+      return Boolean(stateVal);
+    };
+
+    const mahalluBoardItems = boardItems.filter(item => !isStateItem(item));
+    const stateBoardItems = boardItems.filter(item => isStateItem(item));
+
+    let mahalluBoardHTML = '';
+    if (mahalluBoardItems.length > 0) {
+      mahalluBoardHTML = renderBoardCards(mahalluBoardItems);
+    } else {
+      const validCommitteeMembers = (committeeMembers || []).filter(m => Boolean(m.is_community_member));
+      const orderedMembers = validCommitteeMembers.filter(m => m.dashboard_view_order !== null && m.dashboard_view_order !== undefined && !isNaN(m.dashboard_view_order));
+      
+      let membersToDisplay = [];
+      if (orderedMembers.length > 0) {
+        orderedMembers.sort((a, b) => parseInt(a.dashboard_view_order, 10) - parseInt(b.dashboard_view_order, 10));
+        membersToDisplay = orderedMembers.map(m => ({ member: m, roleTitle: m.designation || 'Committee Member' }));
       } else {
-        return `
-          <div class="committee-stamp-card" onclick="showAddMemberRecordModal()" title="Click to add member">
-            <div class="stamp-photo-frame">
-              <div class="stamp-photo-empty">👤</div>
-            </div>
-            <div class="member-name" style="color:#9ca3af;font-style:italic">Vacant</div>
-            <div class="member-role">${esc(roleTitle)}</div>
-          </div>`;
+        const defaultRoles = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Committee Member'];
+        const assignedMembers = validCommitteeMembers.map(m => ({ ...m, _used: false }));
+        membersToDisplay = defaultRoles.map((defaultRole) => {
+          let member = assignedMembers.find(m => !m._used && String(m.designation || '').toLowerCase() === defaultRole.toLowerCase());
+          if (!member) member = assignedMembers.find(m => !m._used);
+          if (member) member._used = true;
+          return { member: member || null, roleTitle: member?.designation || defaultRole };
+        });
       }
-    }).join('');
+
+      mahalluBoardHTML = membersToDisplay.map(slot => {
+        const m = slot.member;
+        const roleTitle = slot.roleTitle;
+        if (m) {
+          const initials = getInitials(m.name);
+          const photoContent = m.photo_url
+            ? `<img src="${esc(m.photo_url)}" alt="${esc(m.name)}" class="stamp-photo-img" onerror="this.outerHTML='<div class=\'stamp-photo-placeholder\'>${initials}</div>'">`
+            : `<div class="stamp-photo-placeholder">${initials}</div>`;
+          return `
+            <div class="committee-stamp-card" onclick="showEditMemberRecordModal('${m.id}')" title="Click to edit member details">
+              <div class="stamp-photo-frame">${photoContent}</div>
+              <div class="member-name">${esc(m.name)}</div>
+              <div class="member-role">${esc(roleTitle)}</div>
+            </div>`;
+        } else {
+          return `
+            <div class="committee-stamp-card" onclick="showAddMemberRecordModal()" title="Click to add member">
+              <div class="stamp-photo-frame">
+                <div class="stamp-photo-empty">👤</div>
+              </div>
+              <div class="member-name" style="color:#9ca3af;font-style:italic">Vacant</div>
+              <div class="member-role">${esc(roleTitle)}</div>
+            </div>`;
+        }
+      }).join('');
+    }
+
+    const stateBoardHTML = renderBoardCards(stateBoardItems);
 
     el.innerHTML = `
       <div class="panel-header"><div><h2>${esc(site?.name || 'Site')}</h2><p>Site Admin Dashboard${site?.address ? ' &bull; ' + esc(site.address) : ''}</p></div></div>
       
       <div class="committee-dashboard-section">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <h3 style="font-size:15px;font-weight:600;color:var(--text);margin:0">Mahallu Jamaath Committee Board</h3>
-          <button class="btn btn-secondary btn-sm" onclick="navigate('admin-members')">Manage Members →</button>
+          <h3 style="font-size:15px;font-weight:600;color:var(--text);margin:0">State Committee Board</h3>
         </div>
         <div class="committee-stamp-grid">
-          ${committeeHTML}
+          ${stateBoardHTML}
+        </div>
+      </div>
+
+      <div class="committee-dashboard-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="font-size:15px;font-weight:600;color:var(--text);margin:0">Mahallu Jamaath Committee Board</h3>
+        </div>
+        <div class="committee-stamp-grid">
+          ${mahalluBoardHTML}
         </div>
       </div>
 

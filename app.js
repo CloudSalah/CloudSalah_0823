@@ -1577,8 +1577,8 @@ function memberRecordFormHTML(m) {
     <div class="form-group"><label>Phone</label>
       <input id="mMemberPhone" type="tel" value="${m ? esc(m.phone || '') : ''}" placeholder="Phone number">
     </div>
-    <div class="form-group">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:600">
+    <div class="form-group form-group-checkbox">
+      <label class="checkbox-label">
         <input type="checkbox" id="mMemberIsCommittee" onchange="toggleMemberRecordCommittee()" ${isCommittee ? 'checked' : ''}>
         Is Committee Member?
       </label>
@@ -1803,15 +1803,18 @@ async function renderAdminActivities(elId = 'admin-activities') {
   if (!siteId) { el.innerHTML = noSiteMsg(); return; }
   setLoading(el);
   try {
-    const [{ data: activities, error }, { count: siteUsersCount }, { data: feeAmts }, { data: feeCounts }, { data: dataCounts }] = await Promise.all([
+    const [{ data: activities, error }, { count: siteUsersCount }, { data: feeAmts }, { data: feeCounts }, { data: dataCounts }, { data: eventTypes, error: eventTypesError }] = await Promise.all([
       supa.from('activities').select('*').eq('site_id', siteId).order('created_at', { ascending: false }),
       supa.from('profiles').select('*', { count: 'exact', head: true }).eq('site_id', siteId).eq('role', 'user'),
       supa.from('fee_records').select('activity_id, amount').eq('site_id', siteId),
       supa.from('fee_records').select('activity_id').eq('site_id', siteId),
       supa.from('data_records').select('activity_id').eq('site_id', siteId),
+      supa.from('event_types').select('id, type'),
     ]);
     if (error) throw error;
+    if (eventTypesError) throw eventTypesError;
     const feeAmtMap = {}, feeCountMap = {}, dataCountMap = {};
+    const eventTypeMap = Object.fromEntries((eventTypes || []).map(eventType => [eventType.id, eventType.type]));
     (feeAmts   || []).forEach(r => { feeAmtMap[r.activity_id]   = (feeAmtMap[r.activity_id]   || 0) + parseFloat(r.amount || 0); });
     (feeCounts || []).forEach(r => { feeCountMap[r.activity_id]  = (feeCountMap[r.activity_id]  || 0) + 1; });
     (dataCounts|| []).forEach(r => { dataCountMap[r.activity_id] = (dataCountMap[r.activity_id] || 0) + 1; });
@@ -1824,18 +1827,20 @@ async function renderAdminActivities(elId = 'admin-activities') {
       ${!(activities || []).length ? emptyState('📋', 'No activities yet', 'Create fee collection or data collection activities and assign them to users') : `
         <div class="activity-grid">
           ${activities.map(a => {
+            const type = String(eventTypeMap[a.type] || a.type).toLowerCase();
+            const isFee = type === 'fee';
             const isDonationEvent = a.is_donation_event || Number(a.type) === 3;
             const assigned  = (a.assigned_users || []).length;
-            const records   = a.type === 'fee' ? (feeCountMap[a.id] || 0) : (dataCountMap[a.id] || 0);
-            const collected = a.type === 'fee' ? (feeAmtMap[a.id]   || 0) : null;
+            const records   = isFee ? (feeCountMap[a.id] || 0) : (dataCountMap[a.id] || 0);
+            const collected = isFee ? (feeAmtMap[a.id]   || 0) : null;
             const overdue   = a.due_date && new Date(a.due_date) < new Date();
-            return `<div class="activity-card ${a.type} ${overdue ? 'overdue' : ''}">
+            return `<div class="activity-card ${type} ${overdue ? 'overdue' : ''}">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
                 <h4>${esc(a.name)}</h4>
-                <span class="badge ${a.type === 'fee' ? 'badge-success' : 'badge-info'}">${a.type === 'fee' ? '💰 Fee' : '📁 Data'}</span>
+                <span class="badge ${isFee ? 'badge-success' : 'badge-info'}">${isFee ? '💰 Fee' : `📁 ${esc(type)}`}</span>
               </div>
               <div class="activity-meta">
-                ${a.type === 'fee' ? `<div>Target: <strong>₹${parseFloat(a.target_amount || 0).toFixed(2)}</strong>/person</div>` : ''}
+                ${isFee ? `<div>Target: <strong>₹${parseFloat(a.target_amount || 0).toFixed(2)}</strong>/person</div>` : ''}
                 ${a.description ? `<div>${esc(a.description)}</div>` : ''}
                 <div>Due: ${a.due_date ? fmtDate(a.due_date) : 'No deadline'} ${overdue ? '<span class="badge badge-danger">Overdue</span>' : ''}</div>
               </div>
@@ -1857,9 +1862,11 @@ async function renderAdminActivities(elId = 'admin-activities') {
 }
 
 function activityFormHTML(a, eventTypes = null) {
-  const isFee = eventTypes ? false : (!a || a.type === 'fee');
+  const isFee = eventTypes
+    ? Number(a?.type) === 1
+    : String(a?.type || '').toLowerCase() === 'fee';
   const typeOptions = eventTypes
-    ? `<option value="" selected disabled>Select type</option>${eventTypes.map(eventType => `<option value="${esc(eventType.type)}">${esc(eventType.type)}</option>`).join('')}`
+    ? `<option value="" ${a ? '' : 'selected'} disabled>Select type</option>${eventTypes.map(eventType => `<option value="${eventType.id}" ${String(eventType.id) === String(a?.type) ? 'selected' : ''}>${esc(eventType.type)}</option>`).join('')}`
     : `<option value="fee" ${isFee ? 'selected' : ''}>💰 Fee Collection</option>
         <option value="data" ${!isFee ? 'selected' : ''}>📁 Data Collection</option>`;
   return `
@@ -1872,8 +1879,8 @@ function activityFormHTML(a, eventTypes = null) {
     <div id="feeAmountField" class="form-group" ${!isFee ? 'style="display:none"' : ''}>
       <label>Target Amount per Person ($)</label>
       <input id="mActAmount" type="number" min="0" step="0.01" value="${a && a.target_amount ? a.target_amount : ''}" placeholder="0.00"></div>
-    <div id="feeAllowEditField" class="form-group" ${!isFee ? 'style="display:none"' : ''}>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+    <div id="feeAllowEditField" class="form-group form-group-checkbox" ${!isFee ? 'style="display:none"' : ''}>
+      <label class="checkbox-label">
         <input type="checkbox" id="mAllowTargetEdit" ${a?.allow_target_edit ? 'checked' : ''}>
         Allow target amount update in Payment Edit
       </label></div>
@@ -1887,18 +1894,18 @@ async function showAddActivityModal() {
   const { data: eventTypes, error } = await supa.from('event_types').select('id, type').order('id');
   if (error) return toast(error.message, 'error');
   showModal('Create Activity', activityFormHTML(null, eventTypes || []), async () => {
-    const name = val('mActName'), type = val('mActType');
-    const selectedEventType = eventTypes.find(eventType => eventType.type === type);
-    const typeId = selectedEventType?.id;
-    if (!type) return toast('Activity type is required', 'error'), false;
+    const name = val('mActName'), typeId = Number(val('mActType'));
+    const isFee = typeId === 1;
+    if (!typeId) return toast('Activity type is required', 'error'), false;
+    const selectedEventType = eventTypes.find(eventType => Number(eventType.id) === typeId);
     if (!typeId) return toast('Invalid activity type selected', 'error'), false;
     if (!name) return toast('Activity name is required', 'error'), false;
     const { error } = await supa.from('activities').insert({
       name, type: typeId, site_id: currentUser.site_id,
       is_donation_event: Number(typeId) === 3,
       is_association_event: Number(typeId) === 4,
-      target_amount:    type === 'fee' ? parseFloat(val('mActAmount') || 0) : null,
-      allow_target_edit: type === 'fee' ? (document.getElementById('mAllowTargetEdit')?.checked || false) : false,
+      target_amount:    isFee && val('mActAmount') ? parseFloat(val('mActAmount')) : null,
+      allow_target_edit: isFee && (document.getElementById('mAllowTargetEdit')?.checked || false),
       due_date:         val('mActDue') || null,
       description:      val('mActDesc') || null,
       assigned_users:   [],
@@ -1909,15 +1916,21 @@ async function showAddActivityModal() {
 }
 
 async function showEditActivityModal(actId) {
-  const { data: a } = await supa.from('activities').select('*').eq('id', actId).single();
+  const [{ data: a }, { data: eventTypes, error: eventTypesError }] = await Promise.all([
+    supa.from('activities').select('*').eq('id', actId).single(),
+    supa.from('event_types').select('id, type').order('id'),
+  ]);
   if (!a) return;
-  showModal('Edit Activity', activityFormHTML(a), async () => {
-    const name = val('mActName'), type = val('mActType');
+  if (eventTypesError) return toast(eventTypesError.message, 'error');
+  showModal('Edit Activity', activityFormHTML(a, eventTypes || []), async () => {
+    const name = val('mActName'), typeId = Number(val('mActType'));
+    const isFee = typeId === 1;
     if (!name) return toast('Activity name is required', 'error'), false;
+    if (!typeId) return toast('Invalid activity type selected', 'error'), false;
     const { error } = await supa.from('activities').update({
-      name, type,
-      target_amount:    type === 'fee' ? parseFloat(val('mActAmount') || 0) : null,
-      allow_target_edit: type === 'fee' ? (document.getElementById('mAllowTargetEdit')?.checked || false) : false,
+      name, type: typeId,
+      target_amount:    isFee && val('mActAmount') ? parseFloat(val('mActAmount')) : null,
+      allow_target_edit: isFee && (document.getElementById('mAllowTargetEdit')?.checked || false),
       due_date:         val('mActDue') || null,
       description:      val('mActDesc') || null,
     }).eq('id', actId);
@@ -1930,7 +1943,7 @@ function toggleFeeField() {
   const field      = document.getElementById('feeAmountField');
   const editField  = document.getElementById('feeAllowEditField');
   const type       = document.getElementById('mActType');
-  const isFee      = type?.value === 'fee';
+  const isFee      = Number(type?.value) === 1 || type?.value.toLowerCase() === 'fee';
   if (field)     field.style.display     = isFee ? '' : 'none';
   if (editField) editField.style.display = isFee ? '' : 'none';
 }

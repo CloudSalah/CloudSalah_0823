@@ -1573,8 +1573,8 @@ function memberRecordFormHTML(m) {
     <div class="form-group"><label>Full Name *</label>
       <input id="mMemberName" type="text" value="${m ? esc(m.name) : ''}" placeholder="Member's full name">
     </div>
-    <div class="form-group"><label>Phone</label>
-      <input id="mMemberPhone" type="tel" value="${m ? esc(m.phone || '') : ''}" placeholder="Phone number">
+    <div class="form-group"><label>Phone *</label>
+      <input id="mMemberPhone" type="tel" value="${m ? esc(m.phone || '') : ''}" placeholder="10-digit phone number" maxlength="10">
     </div>
     <div class="form-group form-group-checkbox">
       <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:600;user-select:none"><input type="checkbox" id="mMemberIsCommittee" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" onchange="toggleMemberRecordCommittee()" ${isCommittee ? 'checked' : ''}> Is Committee Member?</label>
@@ -1618,6 +1618,9 @@ async function showAddMemberRecordModal() {
   showModal('Add Member', memberRecordFormHTML(null), async () => {
     const name = val('mMemberName');
     if (!name) return toast('Full name is required', 'error'), false;
+    const phone = val('mMemberPhone').trim();
+    if (!phone) return toast('Phone number is required', 'error'), false;
+    if (!/^\d{10}$/.test(phone)) return toast('Phone number must be exactly 10 digits', 'error'), false;
     const isCommittee = document.getElementById('mMemberIsCommittee')?.checked || false;
     if (isCommittee && !val('mMemberDesignation')) return toast('Please select a designation', 'error'), false;
     const desig = val('mMemberDesignation');
@@ -1626,7 +1629,7 @@ async function showAddMemberRecordModal() {
     const { error } = await supa.from('members').insert({
       site_id: currentUser.site_id,
       name,
-      phone:               val('mMemberPhone') || null,
+      phone,
       is_community_member: isCommittee,
       designation:         isCommittee ? designation || null : null,
       notes:               val('mMemberNotes') || null,
@@ -1642,6 +1645,9 @@ async function showEditMemberRecordModal(memberId) {
   showModal('Edit Member', memberRecordFormHTML(m), async () => {
     const name = val('mMemberName');
     if (!name) return toast('Full name is required', 'error'), false;
+    const phone = val('mMemberPhone').trim();
+    if (!phone) return toast('Phone number is required', 'error'), false;
+    if (!/^\d{10}$/.test(phone)) return toast('Phone number must be exactly 10 digits', 'error'), false;
     const isCommittee = document.getElementById('mMemberIsCommittee')?.checked || false;
     if (isCommittee && !val('mMemberDesignation')) return toast('Please select a designation', 'error'), false;
     const desig = val('mMemberDesignation');
@@ -1649,7 +1655,7 @@ async function showEditMemberRecordModal(memberId) {
     const designation = desig === 'Others' ? val('mMemberDesignationOther') : desig;
     const { error } = await supa.from('members').update({
       name,
-      phone:               val('mMemberPhone') || null,
+      phone,
       is_community_member: isCommittee,
       designation:         isCommittee ? designation || null : null,
       notes:               val('mMemberNotes') || null,

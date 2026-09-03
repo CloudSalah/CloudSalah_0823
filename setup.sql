@@ -51,6 +51,8 @@ alter table public.roles add column if not exists site_admin_access  boolean def
 alter table public.roles add column if not exists create_members     boolean default false;
 alter table public.roles add column if not exists create_dependents  boolean default false;
 alter table public.roles add column if not exists create_users       boolean default false;
+alter table public.members add column if not exists photo_url        text;
+alter table public.members add column if not exists dashboard_view_order integer;
 
 -- Circular FK: profiles.site_id → sites.id (added after sites table exists)
 do $$

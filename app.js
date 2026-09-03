@@ -1296,57 +1296,94 @@ async function renderAdminDashboard() {
   }
   setLoading(el);
   try {
-    const [{ data: site }, { count: usersCount }, { count: actsCount }, { data: feeRecs }, { count: dataCount }, { data: recentFees }, { data: recentExps }, { data: expRecs }] = await Promise.all([
+    const [{ data: site }, { count: usersCount }, { count: actsCount }, { data: feeRecs }, { count: dataCount }, { data: expRecs }, { data: committeeMembers }] = await Promise.all([
       supa.from('sites').select('name, address').eq('id', siteId).single(),
       supa.from('profiles').select('*', { count: 'exact', head: true }).eq('site_id', siteId).eq('role', 'user'),
       supa.from('activities').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
       supa.from('fee_records').select('amount').eq('site_id', siteId),
       supa.from('data_records').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
-      supa.from('fee_records').select('id, amount, date, member_id, member:members!member_id(name), collector:profiles!collected_by(name)').eq('site_id', siteId).order('date', { ascending: false }).limit(5),
-      supa.from('expenses').select('id, amount, date, description, category:expense_categories!category_id(name), enteredBy:profiles!entered_by(name)').eq('site_id', siteId).order('date', { ascending: false }).limit(5),
       supa.from('expenses').select('amount').eq('site_id', siteId),
+      supa.from('members').select('*').eq('site_id', siteId).eq('is_community_member', true),
     ]);
     const totalFees = (feeRecs || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
     const totalExp  = (expRecs || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
-    const netBalance = totalFees - totalExp;
+
+    const validCommitteeMembers = (committeeMembers || []).filter(m => Boolean(m.is_community_member));
+    const orderedMembers = validCommitteeMembers.filter(m => m.dashboard_view_order !== null && m.dashboard_view_order !== undefined && !isNaN(m.dashboard_view_order));
+    
+    let membersToDisplay = [];
+
+    if (orderedMembers.length > 0) {
+      orderedMembers.sort((a, b) => parseInt(a.dashboard_view_order, 10) - parseInt(b.dashboard_view_order, 10));
+      membersToDisplay = orderedMembers.map(m => ({
+        member: m,
+        roleTitle: m.designation || 'Committee Member'
+      }));
+    } else {
+      const defaultRoles = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Committee Member'];
+      const assignedMembers = validCommitteeMembers.map(m => ({ ...m, _used: false }));
+
+      membersToDisplay = defaultRoles.map((defaultRole) => {
+        let member = assignedMembers.find(m => !m._used && String(m.designation || '').toLowerCase() === defaultRole.toLowerCase());
+        if (!member) {
+          member = assignedMembers.find(m => !m._used);
+        }
+        if (member) member._used = true;
+        return {
+          member: member || null,
+          roleTitle: member?.designation || defaultRole
+        };
+      });
+    }
+
+    const getInitials = n => (n || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+
+    const committeeHTML = membersToDisplay.map(slot => {
+      const m = slot.member;
+      const roleTitle = slot.roleTitle;
+      if (m) {
+        const initials = getInitials(m.name);
+        const photoContent = m.photo_url
+          ? `<img src="${esc(m.photo_url)}" alt="${esc(m.name)}" class="stamp-photo-img" onerror="this.outerHTML='<div class=\'stamp-photo-placeholder\'>${initials}</div>'">`
+          : `<div class="stamp-photo-placeholder">${initials}</div>`;
+        return `
+          <div class="committee-stamp-card" onclick="showEditMemberRecordModal('${m.id}')" title="Click to edit member details">
+            <div class="stamp-photo-frame">${photoContent}</div>
+            <div class="member-name">${esc(m.name)}</div>
+            <div class="member-role">${esc(roleTitle)}</div>
+          </div>`;
+      } else {
+        return `
+          <div class="committee-stamp-card" onclick="showAddMemberRecordModal()" title="Click to add member">
+            <div class="stamp-photo-frame">
+              <div class="stamp-photo-empty">👤</div>
+            </div>
+            <div class="member-name" style="color:#9ca3af;font-style:italic">Vacant</div>
+            <div class="member-role">${esc(roleTitle)}</div>
+          </div>`;
+      }
+    }).join('');
 
     el.innerHTML = `
       <div class="panel-header"><div><h2>${esc(site?.name || 'Site')}</h2><p>Site Admin Dashboard${site?.address ? ' &bull; ' + esc(site.address) : ''}</p></div></div>
+      
+      <div class="committee-dashboard-section">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <h3 style="font-size:15px;font-weight:600;color:var(--text);margin:0">Mahallu Jamaath Committee Board</h3>
+          <button class="btn btn-secondary btn-sm" onclick="navigate('admin-members')">Manage Members →</button>
+        </div>
+        <div class="committee-stamp-grid">
+          ${committeeHTML}
+        </div>
+      </div>
+
       <div class="stats-grid">
         ${statCard('👥', 'si-blue',   usersCount || 0,            'Users')}
         ${statCard('📋', 'si-yellow', actsCount  || 0,            'Activities')}
         ${statCard('💰', 'si-green',  '₹' + totalFees.toFixed(2), 'Fees Collected')}
-        ${statCard('�', 'si-yellow', '₹' + totalExp.toFixed(2),  'Total Expenses')}
-        ${statCard('�📝', 'si-teal',   (feeRecs || []).length,     'Fee Transactions')}
+        ${statCard('💸', 'si-yellow', '₹' + totalExp.toFixed(2),  'Total Expenses')}
+        ${statCard('📝', 'si-teal',   (feeRecs || []).length,     'Fee Transactions')}
         ${statCard('📁', 'si-purple', dataCount  || 0,            'Data Records')}
-      </div>
-      <div class="two-col">
-        <div class="card">
-          <div class="card-header"><h3>Recent Expenses</h3><button class="btn btn-secondary btn-sm" onclick="navigate('admin-expenses')">View All</button></div>
-          <div class="card-body">
-            ${!(recentExps || []).length ? emptyState('💸', 'No expenses yet', '') :
-              recentExps.map(r => `<div class="summary-row">
-                <div style="display:flex;justify-content:space-between">
-                  <span class="f-13 fw-bold">${r.category?.name ? esc(r.category.name) : '—'}</span>
-                  <span class="fw-bold text-danger">₹${parseFloat(r.amount).toFixed(2)}</span>
-                </div>
-                <div class="meta-row">${r.enteredBy?.name ? esc(r.enteredBy.name) : 'Unknown'} &bull; ${fmtDate(r.date)}</div>
-              </div>`).join('')}
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>Recent Fee Collections</h3><button class="btn btn-secondary btn-sm" onclick="navigate('admin-fees')">View All</button></div>
-          <div class="card-body">
-            ${!(recentFees || []).length ? emptyState('💰', 'No fee records yet', '') :
-              recentFees.map(r => `<div class="summary-row">
-                <div style="display:flex;justify-content:space-between">
-                  <span class="f-13 fw-bold">${esc(r.member?.name || '—')}</span>
-                  <span class="fw-bold text-green">₹${parseFloat(r.amount).toFixed(2)}</span>
-                </div>
-                <div class="meta-row">By ${r.collector?.name ? esc(r.collector.name) : 'Unknown'} &bull; ${fmtDate(r.date)}</div>
-              </div>`).join('')}
-          </div>
-        </div>
       </div>`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
@@ -1564,10 +1601,10 @@ async function renderAdminMembers() {
 function memberRecordFormHTML(m) {
   const isCommittee = m?.is_community_member || false;
   const rawDesig    = m?.designation || '';
-  const stdDesig    = ['President','Secretary','Treasurer','Committee Member'];
+  const stdDesig    = ['President','Vice President','Secretary','Treasurer','Committee Member'];
   const isOthers    = rawDesig && !stdDesig.includes(rawDesig);
   const selectDesig = isOthers ? 'Others' : rawDesig;
-  const desigOpts   = ['President','Secretary','Treasurer','Committee Member','Others']
+  const desigOpts   = ['President','Vice President','Secretary','Treasurer','Committee Member','Others']
     .map(d => `<option value="${d}" ${selectDesig === d ? 'selected' : ''}>${d}</option>`).join('');
   return `
     <div class="form-group"><label>Full Name *</label>
@@ -1588,6 +1625,9 @@ function memberRecordFormHTML(m) {
     <div id="memberOthersGroup" class="form-group" style="${isOthers ? '' : 'display:none'}">
       <label>Custom Designation *</label>
       <input id="mMemberDesignationOther" type="text" value="${isOthers ? esc(rawDesig) : ''}" placeholder="Enter designation manually">
+    </div>
+    <div class="form-group"><label>Dashboard View Order (Optional)</label>
+      <input id="mMemberDashboardOrder" type="number" min="1" step="1" value="${m && m.dashboard_view_order !== null && m.dashboard_view_order !== undefined ? m.dashboard_view_order : ''}" placeholder="e.g. 1, 2, 3...">
     </div>
     <div class="form-group"><label>Notes</label>
       <textarea id="mMemberNotes" placeholder="Any additional notes...">${m ? esc(m.notes || '') : ''}</textarea>
@@ -1626,12 +1666,15 @@ async function showAddMemberRecordModal() {
     const desig = val('mMemberDesignation');
     if (desig === 'Others' && !val('mMemberDesignationOther')) return toast('Please enter the custom designation', 'error'), false;
     const designation = desig === 'Others' ? val('mMemberDesignationOther') : desig;
+    const dashOrderVal = val('mMemberDashboardOrder');
+    const dashboard_view_order = dashOrderVal !== '' && !isNaN(dashOrderVal) ? parseInt(dashOrderVal, 10) : null;
     const { error } = await supa.from('members').insert({
       site_id: currentUser.site_id,
       name,
       phone,
       is_community_member: isCommittee,
       designation:         isCommittee ? designation || null : null,
+      dashboard_view_order,
       notes:               val('mMemberNotes') || null,
     });
     if (error) return toast(error.message, 'error'), false;
@@ -1653,11 +1696,14 @@ async function showEditMemberRecordModal(memberId) {
     const desig = val('mMemberDesignation');
     if (desig === 'Others' && !val('mMemberDesignationOther')) return toast('Please enter the custom designation', 'error'), false;
     const designation = desig === 'Others' ? val('mMemberDesignationOther') : desig;
+    const dashOrderVal = val('mMemberDashboardOrder');
+    const dashboard_view_order = dashOrderVal !== '' && !isNaN(dashOrderVal) ? parseInt(dashOrderVal, 10) : null;
     const { error } = await supa.from('members').update({
       name,
       phone,
       is_community_member: isCommittee,
       designation:         isCommittee ? designation || null : null,
+      dashboard_view_order,
       notes:               val('mMemberNotes') || null,
     }).eq('id', memberId);
     if (error) return toast(error.message, 'error'), false;

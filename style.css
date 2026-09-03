@@ -488,6 +488,7 @@ tbody tr:hover { background: #fafbfc; }
 .activity-card.fee  { border-left-color: #10b981; }
 .activity-card.data { border-left-color: #6366f1; }
 .activity-card.overdue { border-left-color: #ef4444; }
+.activity-card.archived { border-left-color: #9ca3af; background: #fafafa; }
 
 .activity-card h4  { font-size: 14px; font-weight: 600; margin-bottom: 6px; }
 .activity-meta     { font-size: 12px; color: var(--text-light); margin-bottom: 10px; line-height: 1.8; }

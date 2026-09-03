@@ -1815,30 +1815,61 @@ async function renderAdminActivities(elId = 'admin-activities') {
     (feeCounts || []).forEach(r => { feeCountMap[r.activity_id]  = (feeCountMap[r.activity_id]  || 0) + 1; });
     (dataCounts|| []).forEach(r => { dataCountMap[r.activity_id] = (dataCountMap[r.activity_id] || 0) + 1; });
 
+    const allActs = activities || [];
+    let archivedCount = 0;
+    let activeCount = 0;
+    allActs.forEach(a => {
+      const isArchived = Boolean(a.due_date && new Date(a.due_date) < new Date());
+      if (isArchived) archivedCount++;
+      else activeCount++;
+    });
+
     el.innerHTML = `
       <div class="panel-header">
         <div><h2>Manage Events</h2><p>Create and assign payment and data collection events</p></div>
         <div class="panel-header-actions"><button class="btn btn-primary" onclick="showAddActivityModal()">+ Create Activity</button></div>
       </div>
-      ${!(activities || []).length ? emptyState('📋', 'No activities yet', 'Create fee collection or data collection activities and assign them to users') : `
+      ${!allActs.length ? emptyState('📋', 'No activities yet', 'Create fee collection or data collection activities and assign them to users') : `
+        <div class="filters">
+          <input class="filter-grow" id="actSearch_${elId}" type="text" placeholder="🔍 Search events..." oninput="filterActivities('${elId}')">
+          <select id="actStatusFilter_${elId}" onchange="filterActivities('${elId}')">
+            <option value="active" selected>Active Events (${activeCount})</option>
+            <option value="archived">📦 Archived / Due Passed (${archivedCount})</option>
+            <option value="all">All Events (${allActs.length})</option>
+          </select>
+          <select id="actTypeFilter_${elId}" onchange="filterActivities('${elId}')">
+            <option value="all">All Event Types</option>
+            ${(eventTypes || []).map(t => `<option value="${t.id}">${esc(t.type)}</option>`).join('')}
+          </select>
+        </div>
+        <div class="act-no-match" style="display:none;text-align:center;padding:40px 20px;color:var(--text-light)">
+          <h3>No matching events found</h3>
+          <p id="actNoMatchHint_${elId}">Try changing your search query or filter options.</p>
+        </div>
         <div class="activity-grid">
-          ${activities.map(a => {
-            const type = String(eventTypeMap[a.type] || a.type).toLowerCase();
-            const isFee = type === 'fee' || Number(a.type) === 1;
+          ${allActs.map(a => {
+            const typeStr = String(eventTypeMap[a.type] || a.type).toLowerCase();
+            const isFee = typeStr === 'fee' || Number(a.type) === 1;
             const isDonationEvent = a.is_donation_event || Number(a.type) === 3;
             const assigned  = (a.assigned_users || []).length;
             const records   = isFee ? (feeCountMap[a.id] || 0) : (dataCountMap[a.id] || 0);
             const collected = isFee ? (feeAmtMap[a.id]   || 0) : null;
-            const overdue   = a.due_date && new Date(a.due_date) < new Date();
-            return `<div class="activity-card ${type} ${overdue ? 'overdue' : ''}">
+            const isArchived = Boolean(a.due_date && new Date(a.due_date) < new Date());
+            return `<div class="activity-card ${typeStr} ${isArchived ? 'archived overdue' : ''}"
+                        data-name="${esc(a.name).toLowerCase()}"
+                        data-type="${a.type}"
+                        data-archived="${isArchived}">
               <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
                 <h4>${esc(a.name)}</h4>
-                <span class="badge ${isFee ? 'badge-success' : 'badge-info'}">${isFee ? '💰 Fee' : `📁 ${esc(type)}`}</span>
+                <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+                  ${isArchived ? `<span class="badge badge-warning" title="Due date passed">📦 Archived</span>` : ''}
+                  <span class="badge ${isFee ? 'badge-success' : 'badge-info'}">${isFee ? '💰 Fee' : `📁 ${esc(typeStr)}`}</span>
+                </div>
               </div>
               <div class="activity-meta">
                 ${isFee ? `<div>Target: <strong>₹${parseFloat(a.target_amount || 0).toFixed(2)}</strong>/person</div>` : ''}
                 ${a.description ? `<div>${esc(a.description)}</div>` : ''}
-                <div>Due: ${a.due_date ? fmtDate(a.due_date) : 'No deadline'} ${overdue ? '<span class="badge badge-danger">Overdue</span>' : ''}</div>
+                <div>Due: ${a.due_date ? fmtDate(a.due_date) : 'No deadline'} ${isArchived ? '<span class="badge badge-danger">Due Passed</span>' : ''}</div>
               </div>
               <div class="activity-stats">
                 ${!isDonationEvent ? `<span>👥 ${assigned}/${siteUsersCount || 0} assigned</span>` : ''}
@@ -1854,7 +1885,86 @@ async function renderAdminActivities(elId = 'admin-activities') {
             </div>`;
           }).join('')}
         </div>`}`;
+
+    if (allActs.length) {
+      filterActivities(elId);
+    }
   } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+function filterActivities(elId = window._actNavTarget || 'admin-activities') {
+  const container = document.getElementById(elId);
+  if (!container) return;
+
+  const searchInput  = container.querySelector(`[id^="actSearch"]`);
+  const statusSelect = container.querySelector(`[id^="actStatusFilter"]`);
+  const typeSelect   = container.querySelector(`[id^="actTypeFilter"]`);
+
+  const query        = (searchInput?.value || '').toLowerCase().trim();
+  const statusFilter = statusSelect?.value || 'active';
+  const typeFilter   = typeSelect?.value || 'all';
+
+  const cards = container.querySelectorAll('.activity-card');
+  let visibleCount = 0;
+  let archivedCount = 0;
+
+  cards.forEach(card => {
+    const name       = card.dataset.name || '';
+    const type       = card.dataset.type || '';
+    const isArchived = card.dataset.archived === 'true';
+
+    if (isArchived) archivedCount++;
+
+    let matchesStatus = true;
+    if (statusFilter === 'active') {
+      matchesStatus = !isArchived;
+    } else if (statusFilter === 'archived') {
+      matchesStatus = isArchived;
+    }
+
+    let matchesType = true;
+    if (typeFilter !== 'all') {
+      matchesType = String(type) === String(typeFilter);
+    }
+
+    let matchesSearch = true;
+    if (query) {
+      matchesSearch = name.includes(query);
+    }
+
+    const show = matchesStatus && matchesType && matchesSearch;
+    card.style.display = show ? '' : 'none';
+    if (show) visibleCount++;
+  });
+
+  const noMatchEl = container.querySelector('.act-no-match');
+  const hintEl    = container.querySelector(`[id^="actNoMatchHint"]`);
+  if (noMatchEl) {
+    if (visibleCount === 0 && cards.length > 0) {
+      noMatchEl.style.display = '';
+      if (statusFilter === 'active' && archivedCount > 0) {
+        if (hintEl) {
+          hintEl.innerHTML = `All active events are completed or their due dates have passed (${archivedCount} archived event${archivedCount > 1 ? 's' : ''} available). <a href="#" onclick="event.preventDefault();setActStatusFilter('${elId}', 'archived')" style="color:var(--primary);font-weight:600">View Archived Events →</a>`;
+        }
+      } else {
+        if (hintEl) {
+          hintEl.textContent = 'Try changing your search query or filter options.';
+        }
+      }
+    } else {
+      noMatchEl.style.display = 'none';
+    }
+  }
+}
+
+function setActStatusFilter(elId, status) {
+  const container = document.getElementById(elId);
+  if (!container) return;
+  const select = container.querySelector(`[id^="actStatusFilter"]`);
+  if (select) {
+    select.value = status;
+    filterActivities(elId);
+  }
 }
 
 function activityFormHTML(a, eventTypes = null) {

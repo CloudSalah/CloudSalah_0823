@@ -7,6 +7,16 @@ const { createClient } = window.supabase;
 const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 let currentUser = null;
+let eventTypesCache = null;
+
+async function getEventTypeId(type) {
+  if (!eventTypesCache) {
+    const { data, error } = await supa.from('event_types').select('id, type').order('id');
+    if (error) throw error;
+    eventTypesCache = data || [];
+  }
+  return eventTypesCache.find(eventType => eventType.type.toLowerCase() === type)?.id || null;
+}
 
 // ============================================================
 //  PASSWORD HASHING  (SHA-256 via Web Crypto API)
@@ -1351,7 +1361,7 @@ async function renderAdminUsers() {
   setLoading(el);
   try {
     const [{ data: users, error }, { data: actData }, { data: feeData }, { data: dataData }] = await Promise.all([
-      supa.from('profiles').select('id, name, username, phone, role_id, is_community_member, designation, created_at, memberRole:roles!role_id(name)').eq('site_id', siteId).eq('role', 'user').order('name'),
+      supa.from('profiles').select('id, username, role_id, created_at, member:members!mem_id(name,phone), memberRole:roles!role_id(name)').eq('site_id', siteId).eq('role', 'user').order('created_at', { ascending: false }),
       supa.from('activities').select('id, assigned_users').eq('site_id', siteId),
       supa.from('fee_records').select('collected_by').eq('site_id', siteId),
       supa.from('data_records').select('collected_by').eq('site_id', siteId),
@@ -1364,19 +1374,19 @@ async function renderAdminUsers() {
 
     el.innerHTML = `
       <div class="panel-header">
-        <div><h2>Profile Users</h2><p>Manage Committee members for your Jamath (Mahallu)</p></div>
-        <div class="panel-header-actions"><button class="btn btn-primary" onclick="showAddUserModal()">+ Add Member</button></div>
+        <div><h2>Profile Users</h2><p>Manage login profiles for your Jamath</p></div>
+        <div class="panel-header-actions"><button class="btn btn-primary" onclick="showCreateProfileModal()">+ Create Profile</button></div>
       </div>
       <div class="card">
         <div class="card-body table-wrapper">
           ${!(users || []).length ? emptyState('👥', 'No members yet', 'Add members to assign them to activities') : `
             <table>
-              <thead><tr><th>Name</th><th>User Name</th><th>Phone</th><th>Role</th><th>Actions</th></tr></thead>
+              <thead><tr><th>Member</th><th>User Name</th><th>Phone</th><th>Role</th><th>Actions</th></tr></thead>
               <tbody>
                 ${users.map(u => `<tr>
-                  <td><strong>${esc(u.name)}</strong></td>
+                  <td><strong>${esc(u.member?.name || '—')}</strong></td>
                   <td>${esc(u.username || '—')}</td>
-                  <td>${esc(u.phone || '—')}</td>
+                  <td>${esc(u.member?.phone || '—')}</td>
                   <td>${u.memberRole?.name ? `<span class="badge badge-info">${esc(u.memberRole.name)}</span>` : '—'}</td>
                   <td><div class="table-actions">
                     <button class="btn btn-secondary btn-sm" onclick="showEditUserModal('${u.id}')">✏️ Edit</button>
@@ -1421,108 +1431,84 @@ function toggleMemberOthers() {
     document.getElementById('mDesignationOther').value = '';
 }
 
-function memberFormBody(roles, u) {
+function profileFormBody(roles, members, u = null) {
   const roleOpts = (roles || []).map(r =>
     `<option value="${r.id}" data-restrict="${r.restrict_login}" ${u?.role_id === r.id ? 'selected' : ''}>${esc(r.name)}</option>`
   ).join('');
 
-  const currentRole  = (roles || []).find(r => r.id === u?.role_id);
-  const restrictLogin = currentRole?.restrict_login || false;
-  const grey          = 'background:#f3f4f6;color:#9ca3af;';
-
-  const isCommittee  = u?.is_community_member || false;
-  const rawDesig     = u?.designation || '';
-  const stdDesig     = ['President','Secretary','Treasurer','Committee Member'];
-  const isOthers     = rawDesig && !stdDesig.includes(rawDesig);
-  const selectDesig  = isOthers ? 'Others' : rawDesig;
-
-  const desigOpts = ['President','Secretary','Treasurer','Committee Member','Others']
-    .map(d => `<option value="${d}" ${selectDesig === d ? 'selected' : ''}>${d}</option>`).join('');
+  const defaultRole = (roles || []).find(r => r.name.toLowerCase() === 'user');
 
   return `
     <div class="form-group"><label>Role</label>
       <select id="mRoleId" onchange="toggleMemberRoleFields()">
-        <option value="">— Select Role —</option>${roleOpts}
+        ${defaultRole ? `<option value="${defaultRole.id}" ${!u?.role_id || u.role_id === defaultRole.id ? 'selected' : ''}>${esc(defaultRole.name)}</option>` : '<option value="">— Select Role —</option>'}${roleOpts}
       </select>
     </div>
-    <div class="form-group"><label>Full Name *</label>
-      <input id="mName" type="text" value="${u ? esc(u.name) : ''}" placeholder="Member's full name">
+    <div class="form-group"><label>Member *</label>
+      <select id="mMemberId"><option value="">— Select Member —</option>${(members || []).map(member => `<option value="${member.id}" ${u?.mem_id === member.id ? 'selected' : ''}>${esc(member.name)}${member.phone ? ` (${esc(member.phone)})` : ''}</option>`).join('')}</select>
     </div>
     <div class="form-group"><label>User Name</label>
-      <input id="mEmail" type="text" value="${u ? esc(u.username || '') : ''}" placeholder="user name"
-        ${restrictLogin ? `disabled style="${grey}"` : ''}>
+      <input id="mEmail" type="text" value="${u ? esc(u.username || '') : ''}" placeholder="user name">
     </div>
     <div class="form-group">
       <label>${u ? 'New Password <span style="font-weight:400;color:#9ca3af">(leave blank to keep)</span>' : 'Password'}</label>
       <input id="mPassword" type="password" placeholder="${u ? 'New password' : 'Min 6 characters'}"
-        ${restrictLogin ? `disabled style="${grey}"` : ''}>
-    </div>
-    <div class="form-group"><label>Phone</label>
-      <input id="mPhone" type="tel" value="${u ? esc(u.phone || '') : ''}" placeholder="Phone number">
+        >
     </div>`;
 }
 
-async function showAddUserModal() {
-  const { data: roles } = await supa.from('roles').select('id, name, restrict_login').order('name');
-  const noLoginRole = (roles || []).find(r => r.name.toLowerCase() === 'no login users');
-  const defaultU = noLoginRole ? { role_id: noLoginRole.id } : null;
-  showModal('Add New Member', memberFormBody(roles, defaultU), async () => {
-    const name = val('mName');
-    if (!name) return toast('Full name is required', 'error'), false;
-
-    const sel = document.getElementById('mRoleId');
-    const restrictLogin = sel?.options[sel.selectedIndex]?.dataset?.restrict === 'true';
-    const username = val('mEmail'), password = val('mPassword');
-
-    if (!restrictLogin && !username)  return toast('User name is required', 'error'), false;
-    if (!restrictLogin && !password)  return toast('Password is required', 'error'), false;
-    if (!restrictLogin && password.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
-
-    const password_hash = restrictLogin ? null : await hashPw(password);
+async function showCreateProfileModal() {
+  const [{ data: roles }, { data: members }] = await Promise.all([
+    supa.from('roles').select('id, name, restrict_login').order('name'),
+    supa.from('members').select('id, name, phone').eq('site_id', currentUser.site_id).order('name'),
+  ]);
+  showModal('Create Profile', profileFormBody(roles, members), async () => {
+    const memberId = val('mMemberId'), username = val('mEmail'), password = val('mPassword');
+    const selectedMember = (members || []).find(member => member.id === memberId);
+    if (!memberId) return toast('Member is required', 'error'), false;
+    if (!selectedMember) return toast('Invalid member selected', 'error'), false;
+    if (!username) return toast('User name is required', 'error'), false;
+    if (!password || password.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
     const { error } = await supa.from('profiles').insert({
-      name,
-      username:  restrictLogin ? null : username.toLowerCase(),
-      password_hash,
-      phone:     val('mPhone') || null,
+      mem_id: memberId,
+      name: selectedMember.name,
+      phone: selectedMember.phone || null,
+      username: username.toLowerCase(),
+      password_hash: await hashPw(password),
       role:      'user',
       site_id:   currentUser.site_id,
       role_id:   val('mRoleId') || null,
     });
     if (error) return toast(error.message, 'error'), false;
-    toast('Member added', 'success'); await navigate('admin-users'); return true;
+    toast('Profile created', 'success'); await navigate('admin-users'); return true;
   });
 }
 
 async function showEditUserModal(userId) {
-  const [{ data: u }, { data: roles }] = await Promise.all([
+  const [{ data: u }, { data: roles }, { data: members }] = await Promise.all([
     supa.from('profiles').select('*').eq('id', userId).single(),
     supa.from('roles').select('id, name, restrict_login').order('name'),
+    supa.from('members').select('id, name, phone').eq('site_id', currentUser.site_id).order('name'),
   ]);
   if (!u) return;
 
-  showModal('Edit Member', memberFormBody(roles, u), async () => {
-    const name = val('mName');
-    if (!name) return toast('Full name is required', 'error'), false;
-
-    const sel = document.getElementById('mRoleId');
-    const restrictLogin = sel?.options[sel.selectedIndex]?.dataset?.restrict === 'true';
+  showModal('Edit Profile', profileFormBody(roles, members, u), async () => {
+    const username = val('mEmail'), memberId = val('mMemberId');
+    const selectedMember = (members || []).find(member => member.id === memberId);
     const pw = val('mPassword');
-
-    if (pw && !restrictLogin && pw.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
-
-    const isCommittee = document.getElementById('mIsCommittee')?.checked || false;
-    if (isCommittee && !val('mDesignation')) return toast('Please select a designation', 'error'), false;
-    const desig = val('mDesignation');
-    if (desig === 'Others' && !val('mDesignationOther')) return toast('Please enter the custom designation', 'error'), false;
-    const designation = desig === 'Others' ? val('mDesignationOther') : desig;
+    if (!memberId) return toast('Member is required', 'error'), false;
+    if (!selectedMember) return toast('Invalid member selected', 'error'), false;
+    if (!username) return toast('User name is required', 'error'), false;
+    if (pw && pw.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
 
     const updates = {
-      name,
-      username:  restrictLogin ? null : (val('mEmail').toLowerCase() || null),
-      phone:     val('mPhone') || null,
+      mem_id: memberId,
+      name: selectedMember.name,
+      phone: selectedMember.phone || null,
+      username: username.toLowerCase(),
       role_id:   val('mRoleId') || null,
     };
-    if (pw && !restrictLogin) updates.password_hash = await hashPw(pw);
+    if (pw) updates.password_hash = await hashPw(pw);
     const { error } = await supa.from('profiles').update(updates).eq('id', userId);
     if (error) return toast(error.message, 'error'), false;
     toast('Member updated', 'success'); await navigate('admin-users'); return true;
@@ -1838,6 +1824,7 @@ async function renderAdminActivities(elId = 'admin-activities') {
       ${!(activities || []).length ? emptyState('📋', 'No activities yet', 'Create fee collection or data collection activities and assign them to users') : `
         <div class="activity-grid">
           ${activities.map(a => {
+            const isDonationEvent = a.is_donation_event || Number(a.type) === 3;
             const assigned  = (a.assigned_users || []).length;
             const records   = a.type === 'fee' ? (feeCountMap[a.id] || 0) : (dataCountMap[a.id] || 0);
             const collected = a.type === 'fee' ? (feeAmtMap[a.id]   || 0) : null;
@@ -1853,13 +1840,13 @@ async function renderAdminActivities(elId = 'admin-activities') {
                 <div>Due: ${a.due_date ? fmtDate(a.due_date) : 'No deadline'} ${overdue ? '<span class="badge badge-danger">Overdue</span>' : ''}</div>
               </div>
               <div class="activity-stats">
-                <span>👥 ${assigned}/${siteUsersCount || 0} assigned</span>
+                ${!isDonationEvent ? `<span>👥 ${assigned}/${siteUsersCount || 0} assigned</span>` : ''}
                 <span>📝 ${records} records</span>
                 ${collected !== null ? `<span class="text-green">💰 ₹${collected.toFixed(2)}</span>` : ''}
               </div>
               <div class="activity-actions">
                 <button class="btn btn-secondary btn-sm" onclick="showEditActivityModal('${a.id}')">✏️ Edit</button>
-                <button class="btn btn-primary btn-sm"   onclick="showAssignModal('${a.id}')">👥 Assign</button>
+                ${!isDonationEvent ? `<button class="btn btn-primary btn-sm" onclick="showAssignModal('${a.id}')">👥 Assign</button>` : ''}
                 <button class="btn btn-info btn-sm"      onclick="showAssignCollectorsModal('${a.id}')">👤 Collectors</button>
                 <button class="btn btn-danger btn-sm"    onclick="deleteActivity('${a.id}')">🗑️</button>
               </div>
@@ -1869,15 +1856,18 @@ async function renderAdminActivities(elId = 'admin-activities') {
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 
-function activityFormHTML(a) {
-  const isFee = !a || a.type === 'fee';
+function activityFormHTML(a, eventTypes = null) {
+  const isFee = eventTypes ? false : (!a || a.type === 'fee');
+  const typeOptions = eventTypes
+    ? `<option value="" selected disabled>Select type</option>${eventTypes.map(eventType => `<option value="${esc(eventType.type)}">${esc(eventType.type)}</option>`).join('')}`
+    : `<option value="fee" ${isFee ? 'selected' : ''}>💰 Fee Collection</option>
+        <option value="data" ${!isFee ? 'selected' : ''}>📁 Data Collection</option>`;
   return `
     <div class="form-group"><label>Activity Name *</label>
       <input id="mActName" type="text" value="${a ? esc(a.name) : ''}" placeholder="e.g., Monthly Maintenance Fee"></div>
     <div class="form-group"><label>Type *</label>
       <select id="mActType" onchange="toggleFeeField()">
-        <option value="fee"  ${isFee ? 'selected' : ''}>💰 Fee Collection</option>
-        <option value="data" ${!isFee ? 'selected' : ''}>📁 Data Collection</option>
+        ${typeOptions}
       </select></div>
     <div id="feeAmountField" class="form-group" ${!isFee ? 'style="display:none"' : ''}>
       <label>Target Amount per Person ($)</label>
@@ -1894,11 +1884,19 @@ function activityFormHTML(a) {
 }
 
 async function showAddActivityModal() {
-  showModal('Create Activity', activityFormHTML(null), async () => {
+  const { data: eventTypes, error } = await supa.from('event_types').select('id, type').order('id');
+  if (error) return toast(error.message, 'error');
+  showModal('Create Activity', activityFormHTML(null, eventTypes || []), async () => {
     const name = val('mActName'), type = val('mActType');
+    const selectedEventType = eventTypes.find(eventType => eventType.type === type);
+    const typeId = selectedEventType?.id;
+    if (!type) return toast('Activity type is required', 'error'), false;
+    if (!typeId) return toast('Invalid activity type selected', 'error'), false;
     if (!name) return toast('Activity name is required', 'error'), false;
     const { error } = await supa.from('activities').insert({
-      name, type, site_id: currentUser.site_id,
+      name, type: typeId, site_id: currentUser.site_id,
+      is_donation_event: Number(typeId) === 3,
+      is_association_event: Number(typeId) === 4,
       target_amount:    type === 'fee' ? parseFloat(val('mActAmount') || 0) : null,
       allow_target_edit: type === 'fee' ? (document.getElementById('mAllowTargetEdit')?.checked || false) : false,
       due_date:         val('mActDue') || null,
@@ -1938,11 +1936,14 @@ function toggleFeeField() {
 }
 
 async function showAssignModal(actId) {
-  const [{ data: act }, { data: siteMembers }] = await Promise.all([
+  const [{ data: act }, { data: siteMembers }, { data: activityMembers, error: activityMembersError }] = await Promise.all([
     supa.from('activities').select('id, name, assigned_users').eq('id', actId).single(),
     supa.from('members').select('id, name').eq('site_id', currentUser.site_id).order('name'),
+    supa.from('activity_members').select('member_id').eq('activity_id', actId),
   ]);
   if (!act) return;
+  if (activityMembersError) return toast(activityMembersError.message, 'error');
+  const assignedMemberIds = new Set((activityMembers || []).map(assignment => assignment.member_id));
 
   const listHTML = !(siteMembers || []).length
     ? '<p style="color:#6b7280;font-size:13px">No members in this site. Add members first.</p>'
@@ -1952,7 +1953,7 @@ async function showAssignModal(actId) {
       </label>
       <div class="checkbox-group">
         ${siteMembers.map(m => `<label>
-          <input type="checkbox" class="memberCheck" value="${m.id}" ${(act.assigned_users || []).includes(m.id) ? 'checked' : ''}>
+          <input type="checkbox" class="memberCheck" value="${m.id}" ${assignedMemberIds.has(m.id) ? 'checked' : ''}>
           ${esc(m.name)}
         </label>`).join('')}
       </div>`;
@@ -1961,7 +1962,33 @@ async function showAssignModal(actId) {
     `<p class="f-12" style="color:#6b7280;margin-bottom:10px">Select members to assign to this activity:</p>${listHTML}`,
   async () => {
     const selected = [...document.querySelectorAll('.memberCheck:checked')].map(c => c.value);
-    const { error } = await supa.from('activities').update({ assigned_users: selected }).eq('id', actId);
+    const { data: existingAssignments, error: assignmentError } = await supa
+      .from('activity_members').select('member_id').eq('activity_id', actId);
+    if (assignmentError) return toast(assignmentError.message, 'error'), false;
+    const existingIds = (existingAssignments || []).map(assignment => assignment.member_id);
+    const releasedIds = existingIds.filter(memberId => !selected.includes(memberId));
+    if (releasedIds.length) {
+      const { error } = await supa.from('activity_members')
+        .delete().eq('activity_id', actId).in('member_id', releasedIds);
+      if (error) return toast(error.message, 'error'), false;
+    }
+    const newIds = selected.filter(memberId => !existingIds.includes(memberId));
+    const assignedAt = new Date().toISOString();
+    if (existingIds.some(memberId => selected.includes(memberId))) {
+      const { error } = await supa.from('activity_members').update({ assigned_at: assignedAt })
+        .eq('activity_id', actId).in('member_id', selected);
+      if (error) return toast(error.message, 'error'), false;
+    }
+    if (newIds.length) {
+      const { error } = await supa.from('activity_members').insert(
+        newIds.map(memberId => ({ activity_id: actId, member_id: memberId, assigned_at: assignedAt })),
+      );
+      if (error) return toast(error.message, 'error'), false;
+    }
+    const memberIdSet = new Set((siteMembers || []).map(member => member.id));
+    const collectorAssignments = (act.assigned_users || []).filter(id => !memberIdSet.has(id));
+    const { error } = await supa.from('activities')
+      .update({ assigned_users: [...new Set([...selected, ...collectorAssignments])] }).eq('id', actId);
     if (error) return toast(error.message, 'error'), false;
     toast(`${selected.length} member(s) assigned`, 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
   });
@@ -2024,14 +2051,21 @@ async function renderAdminFees() {
   if (!siteId) { el.innerHTML = noSiteMsg(); return; }
   setLoading(el);
   try {
-    const [{ data: feeActs, error }, { data: feeRecords }] = await Promise.all([
-      supa.from('activities').select('id, name, target_amount, assigned_users').eq('site_id', siteId).eq('type', 'fee').order('name'),
-      supa.from('fee_records').select('id, member_id, activity_id, amount, date, target_amount, collected_by').eq('site_id', siteId).not('member_id', 'is', null).limit(10000),
-    ]);
+    const feeTypeId = await getEventTypeId('fee');
+    const { data: feeActs, error } = await supa.from('activities')
+      .select('id, name, target_amount').eq('site_id', siteId).eq('type', feeTypeId).order('name');
     if (error) throw error;
 
-    // Collect all assigned member IDs across all fee activities
-    const allMemberIds = [...new Set((feeActs || []).flatMap(a => a.assigned_users || []))];
+    const feeActivityIds = (feeActs || []).map(activity => activity.id);
+    const [{ data: activityMembers, error: activityMembersError }, { data: feeRecords }] = await Promise.all([
+      feeActivityIds.length
+        ? supa.from('activity_members').select('activity_id, member_id').in('activity_id', feeActivityIds)
+        : Promise.resolve({ data: [] }),
+      supa.from('fee_records').select('id, member_id, activity_id, amount, date, target_amount, collected_by').eq('site_id', siteId).not('member_id', 'is', null).limit(10000),
+    ]);
+    if (activityMembersError) throw activityMembersError;
+
+    const allMemberIds = [...new Set((activityMembers || []).map(assignment => assignment.member_id))];
     const { data: allMembers } = allMemberIds.length
       ? await supa.from('members').select('id, name').in('id', allMemberIds).order('name')
       : { data: [] };
@@ -2048,8 +2082,12 @@ async function renderAdminFees() {
 
     // Build one row per member per activity
     const rows = [];
+    const assignmentsByActivity = {};
+    (activityMembers || []).forEach(assignment => {
+      (assignmentsByActivity[assignment.activity_id] ||= []).push(assignment.member_id);
+    });
     (feeActs || []).forEach(act => {
-      (act.assigned_users || []).forEach(mId => {
+      (assignmentsByActivity[act.id] || []).forEach(mId => {
         const member = memberMap[mId];
         if (!member) return;
         const payments  = (feeRecords || []).filter(r => r.activity_id === act.id && r.member_id === mId);
@@ -2079,8 +2117,8 @@ async function renderAdminFees() {
 
     el.innerHTML = `
       <div class="panel-header">
-        <div><h2>Payment Collections</h2><p>Member-wise payment status for all events</p></div>
-        <div class="panel-header-actions"><button class="btn btn-secondary" onclick="exportFeeCSV()">⬇️ Export CSV</button></div>
+      <div><h2>Payment Collections</h2><p>Member-wise payment status for all events</p></div>
+      <div class="panel-header-actions"><button class="btn btn-secondary" onclick="exportFeeCSV()">⬇️ Export CSV</button></div>
       </div>
       <div class="stats-grid">
         ${statCard('💰', 'si-green',  '₹' + totalCollected.toFixed(2), 'Total Collected')}
@@ -2118,7 +2156,7 @@ async function renderAdminFees() {
                     <td>${statusBadge(r.status)}</td>
                     <td>
                       <div class="table-actions">
-                        ${r.status !== 'paid'
+                        ${!r.payments.length
                           ? `<button class="btn btn-success btn-sm" onclick="showRecordFeeForMember('${r.act.id}','${r.member.id}','${esc(r.member.name)}',${r.totalPaid},${r.target},'admin-fees')">💰 Record</button>`
                           : ''}
                         ${r.latestPayment
@@ -2131,8 +2169,60 @@ async function renderAdminFees() {
             </table>
           </div>
         </div>
-      </div>`;
+      </div>
+      <button class="btn btn-primary" style="position:fixed;right:24px;bottom:24px;z-index:10;box-shadow:0 6px 18px rgba(0,0,0,.2)" onclick="showDonationModal()">＋ Donation</button>`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+async function showDonationModal() {
+  const [{ data: donationEvents, error: eventError }, { data: members, error: memberError }] = await Promise.all([
+    supa.from('activities').select('id, name').eq('site_id', currentUser.site_id).eq('type', 3).order('name'),
+    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).order('name'),
+  ]);
+  if (eventError) return toast(eventError.message, 'error');
+  if (memberError) return toast(memberError.message, 'error');
+  const eventOptions = (donationEvents || []).map(event => `<option value="${event.id}">${esc(event.name)}</option>`).join('');
+  const memberOptions = (members || []).map(member => `<option value="${member.id}">${esc(member.name)}</option>`).join('');
+
+  showModal('Donation Collection', `
+    <div class="form-group"><label>Event *</label>
+      <select id="mDonationEvent"><option value="">Select donation event</option>${eventOptions}</select></div>
+    <div class="form-group"><label>Donor Name *</label><input id="mDonorName" type="text" placeholder="Full name"></div>
+    <div class="form-group"><label>Phone</label><input id="mDonorPhone" type="tel" placeholder="Phone number"></div>
+    <div class="form-group"><label>City</label><input id="mDonorCity" type="text" placeholder="City"></div>
+    <div class="form-group"><label>State</label><input id="mDonorState" type="text" placeholder="State"></div>
+    <div class="form-group"><label>Country</label><input id="mDonorCountry" type="text" placeholder="Country"></div>
+    <div class="form-group"><label>Nominee</label>
+      <select id="mDonorNominee"><option value="">Select nominee</option>${memberOptions}</select></div>
+    <div class="form-group"><label>Amount *</label><input id="mDonationAmount" type="number" min="0.01" step="0.01" placeholder="0.00"></div>
+    <div class="form-group"><label>Collection Date</label><input id="mDonationDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></div>
+    <div class="form-group"><label>Notes</label><textarea id="mDonationNotes" placeholder="Additional notes..."></textarea></div>`,
+  async () => {
+    const eventId = val('mDonationEvent');
+    const donorName = val('mDonorName');
+    const amount = parseFloat(val('mDonationAmount'));
+    if (!eventId) return toast('Donation event is required', 'error'), false;
+    if (!donorName) return toast('Donor name is required', 'error'), false;
+    if (!amount || amount <= 0) return toast('Valid donation amount is required', 'error'), false;
+    const nominee = document.getElementById('mDonorNominee')?.selectedOptions[0]?.textContent || null;
+    const { data: receipt, error: receiptError } = await supa.from('payment_reciept')
+      .insert({}).select('id').single();
+    if (receiptError) return toast(receiptError.message, 'error'), false;
+    const { error } = await supa.from('donation_records').insert({
+      donor_name: donorName, donor_phone: val('mDonorPhone') || null,
+      donor_city: val('mDonorCity') || null, donor_state: val('mDonorState') || null,
+      donor_country: val('mDonorCountry') || null,
+      donor_nominee: nominee && val('mDonorNominee') ? nominee : null,
+      amount, is_paid: true, event_id: eventId,
+      reciept_id: receipt.id,
+      collection_date: val('mDonationDate') || null, notes: val('mDonationNotes') || null,
+    });
+    if (error) {
+      await supa.from('payment_reciept').delete().eq('id', receipt.id);
+      return toast(error.message, 'error'), false;
+    }
+    toast('Donation recorded', 'success'); await navigate(currentUser.role === 'user' ? 'user-fees' : 'admin-fees'); return true;
+  });
 }
 
 // Opens record payment modal pre-filled with specific member from admin view
@@ -2168,13 +2258,25 @@ async function showRecordFeeForMember(actId, memberId, memberName, totalPaid = 0
     if (balance > 0 && amount > balance)           return toast(`Amount cannot exceed balance of ₹${balance.toFixed(2)}`, 'error'), false;
     if (!balance && target > 0 && amount > target) return toast(`Amount cannot exceed target of ₹${target.toFixed(2)}`, 'error'), false;
     if (!date)                                     return toast('Date is required', 'error'), false;
+    if (Number(act.type) !== 1)                    return toast('Fee records can only be created for fee events', 'error'), false;
+    const { data: existingRecords, error: existingRecordError } = await supa.from('fee_records')
+      .select('id').eq('site_id', currentUser.site_id).eq('member_id', memberId).limit(1);
+    if (existingRecordError) return toast(existingRecordError.message, 'error'), false;
+    if (existingRecords?.length) return toast('This member already has a fee record for this site', 'error'), false;
+    const { data: receipt, error: receiptError } = await supa.from('payment_reciept')
+      .insert({}).select('id').single();
+    if (receiptError) return toast(receiptError.message, 'error'), false;
     const { error } = await supa.from('fee_records').insert({
       activity_id: actId, site_id: currentUser.site_id,
       collected_by: currentUser.id, member_id: memberId,
       amount, date, notes: val('mNotes') || null,
       target_amount: target > 0 ? target : null,
+      reciept_id: receipt.id,
     });
-    if (error) return toast(error.message, 'error'), false;
+    if (error) {
+      await supa.from('payment_reciept').delete().eq('id', receipt.id);
+      return toast(error.message, 'error'), false;
+    }
     toast('Payment recorded!', 'success'); await navigate(navTarget); return true;
   });
 }
@@ -2200,8 +2302,9 @@ async function showEditFeeRecord(recordId, targetAmt, navTarget = 'admin-fees') 
     <div class="form-group"><label>Member</label>
       <input type="text" value="${esc(r.member?.name || '—')}" disabled style="${grey}">
     </div>
-    <div class="form-group"><label>Total Paid Amount</label>
-      <input type="text" value="₹${totalPaid.toFixed(2)}" disabled style="${grey}">
+    <div class="form-group"><label>Total Paid Amount ($)</label>
+      <input id="mPaidAmount" type="number" min="0.01" step="0.01"
+        value="${parseFloat(r.amount || 0).toFixed(2)}" placeholder="0.00">
     </div>
     <div class="form-group"><label>Target Amount ($)</label>
       <input id="mTargetAmount" type="number" min="0.01" step="0.01"
@@ -2218,11 +2321,15 @@ async function showEditFeeRecord(recordId, targetAmt, navTarget = 'admin-fees') 
   async () => {
     const date = val('mDate');
     if (!date) return toast('Date is required', 'error'), false;
+    const newAmount = parseFloat(val('mPaidAmount') || 0);
+    if (!newAmount || newAmount <= 0) return toast('Valid paid amount is required', 'error'), false;
     const newTarget = canEditTarget ? parseFloat(val('mTargetAmount') || 0) : null;
-    if (canEditTarget && newTarget > 0 && newTarget < totalPaid)
-      return toast(`Target amount must be at least the total paid (₹${totalPaid.toFixed(2)})`, 'error'), false;
-    // Only update target_amount on the latest record; never touch amount
-    const updates = { date, notes: val('mNotes') || null };
+    const otherPaymentsTotal = totalPaid - parseFloat(r.amount || 0);
+    const proposedTotal = otherPaymentsTotal + newAmount;
+    const effectiveTarget = canEditTarget ? newTarget : target;
+    if (effectiveTarget > 0 && proposedTotal > effectiveTarget)
+      return toast(`Total paid amount cannot exceed the target amount of ₹${effectiveTarget.toFixed(2)}`, 'error'), false;
+    const updates = { amount: newAmount, date, notes: val('mNotes') || null };
     if (canEditTarget) updates.target_amount = newTarget > 0 ? newTarget : null;
     const { error } = await supa.from('fee_records').update(updates).eq('id', recordId);
     if (error) return toast(error.message, 'error'), false;
@@ -2264,11 +2371,12 @@ async function renderAdminData() {
   if (!siteId) { el.innerHTML = noSiteMsg(); return; }
   setLoading(el);
   try {
+    const dataTypeId = await getEventTypeId('data');
     const [{ data: records, error }, { data: dataActs }] = await Promise.all([
       supa.from('data_records')
         .select('id, person_name, address, phone, date, activity_id, activity:activities!activity_id(id,name), collector:profiles!collected_by(name)')
         .eq('site_id', siteId).order('date', { ascending: false }),
-      supa.from('activities').select('id, name').eq('site_id', siteId).eq('type', 'data'),
+      supa.from('activities').select('id, name').eq('site_id', siteId).eq('type', dataTypeId),
     ]);
     if (error) throw error;
 
@@ -2335,8 +2443,9 @@ async function renderAdminReports() {
   if (!siteId) { el.innerHTML = noSiteMsg(); return; }
   setLoading(el);
   try {
+    const feeTypeId = await getEventTypeId('fee');
     const [{ data: feeActs, error }, { data: allMembers }, { data: feeRecords }] = await Promise.all([
-      supa.from('activities').select('id, name, target_amount, assigned_users, due_date, created_at').eq('site_id', siteId).eq('type', 'fee').order('created_at'),
+      supa.from('activities').select('id, name, target_amount, assigned_users, due_date, created_at').eq('site_id', siteId).eq('type', feeTypeId).order('created_at'),
       supa.from('members').select('id, name').eq('site_id', siteId).order('name'),
       supa.from('fee_records').select('member_id, activity_id, amount, date, target_amount').eq('site_id', siteId).not('member_id', 'is', null).limit(10000),
     ]);
@@ -2555,12 +2664,12 @@ async function renderUserDashboard() {
 //  USER — FEE COLLECTION
 // ============================================================
 
-function buildUserPaymentCollections(feeActs, feeRecords, memberMap) {
+function buildUserPaymentCollections(feeActs, feeRecords, memberMap, activityMembers) {
   if (!feeActs.length) return '';
 
   const rows = [];
   feeActs.forEach(act => {
-    (act.assigned_users || []).forEach(mId => {
+    (activityMembers[act.id] || []).forEach(mId => {
       if (!memberMap[mId]) return;
       const member    = memberMap[mId];
       const payments  = feeRecords.filter(r => r.activity_id === act.id && r.member_id === mId);
@@ -2616,7 +2725,7 @@ function buildUserPaymentCollections(feeActs, feeRecords, memberMap) {
                   <td>${r.target > 0 ? '₹' + Math.max(0, r.target - r.totalPaid).toFixed(2) : '—'}</td>
                   <td>${statusBadge(r.status)}</td>
                   <td><div class="table-actions">
-                    ${r.status !== 'paid' ? `<button class="btn btn-success btn-sm" onclick="showRecordFeeForMember('${r.act.id}','${r.member.id}','${esc(r.member.name)}',${r.totalPaid},${r.target},'user-fees')">💰 Record</button>` : ''}
+                    ${!r.payments.length ? `<button class="btn btn-success btn-sm" onclick="showRecordFeeForMember('${r.act.id}','${r.member.id}','${esc(r.member.name)}',${r.totalPaid},${r.target},'user-fees')">💰 Record</button>` : ''}
                     ${r.latestPayment ? `<button class="btn btn-secondary btn-sm" onclick="showEditFeeRecord('${r.latestPayment.id}',${r.target},'user-fees')">✏️ Edit</button>` : ''}
                   </div></td>
                 </tr>`).join('')}
@@ -2633,23 +2742,33 @@ async function renderUserFees() {
   try {
     const userId  = currentUser.id;
     const siteId  = currentUser.site_id;
-    const [{ data: myFeeActs }, { data: myFeeRecs }, { data: siteFeeRecords }] = await Promise.all([
-      supa.from('activities').select('*').eq('type', 'fee').contains('assigned_users', [userId]),
+    const feeTypeId = await getEventTypeId('fee');
+    const [{ data: myActivities }, { data: myFeeRecs }, { data: siteFeeRecords }] = await Promise.all([
+      supa.from('activities').select('*').eq('site_id', siteId).in('type', [feeTypeId, 3]).contains('assigned_users', [userId]),
       supa.from('fee_records').select('*, activity:activities!activity_id(name), member:members!member_id(name)').eq('collected_by', userId).order('date', { ascending: false }),
       siteId ? supa.from('fee_records').select('id, member_id, activity_id, amount, date, target_amount').eq('site_id', siteId).not('member_id', 'is', null).limit(10000) : Promise.resolve({ data: [] }),
     ]);
 
     // Fetch member names for the Payment Collections table
-    const allMemberIds = [...new Set((myFeeActs || []).flatMap(a => a.assigned_users || []))];
+    const myFeeActs = (myActivities || []).filter(activity => Number(activity.type) === Number(feeTypeId));
+    const activityIds = myFeeActs.map(activity => activity.id);
+    const { data: activityMemberRows } = activityIds.length
+      ? await supa.from('activity_members').select('activity_id, member_id').in('activity_id', activityIds)
+      : { data: [] };
+    const allMemberIds = [...new Set((activityMemberRows || []).map(assignment => assignment.member_id))];
     const { data: assignedMembers } = allMemberIds.length
       ? await supa.from('members').select('id, name').in('id', allMemberIds).order('name')
       : { data: [] };
     const memberMap = Object.fromEntries((assignedMembers || []).map(m => [m.id, m]));
+    const activityMembers = {};
+    (activityMemberRows || []).forEach(assignment => {
+      (activityMembers[assignment.activity_id] ||= []).push(assignment.member_id);
+    });
 
     el.innerHTML = `
       <div class="panel-header"><div><h2>Fee Collection</h2><p>Record fee payments from community members</p></div></div>
-      ${!(myFeeActs || []).length ? emptyState('💰', 'No fee activities assigned', 'Your site admin will assign fee collection activities to you') : `
-        ${buildUserPaymentCollections(myFeeActs || [], siteFeeRecords || [], memberMap)}
+      ${!(myActivities || []).length ? emptyState('💰', 'No fee or donation activities assigned', 'Your site admin will assign collection activities to you') : `
+        ${buildUserPaymentCollections(myFeeActs || [], siteFeeRecords || [], memberMap, activityMembers)}
         <div class="card">
           <div class="card-header"><h3>My Recent Collections</h3></div>
           <div class="card-body table-wrapper">
@@ -2667,7 +2786,8 @@ async function renderUserFees() {
               </tbody>
             </table>
           </div>
-        </div>`}`;
+        </div>`}
+      <button class="btn btn-primary" style="position:fixed;right:24px;bottom:24px;z-index:10;box-shadow:0 6px 18px rgba(0,0,0,.2)" onclick="showDonationModal()">＋ Donation</button>`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 
@@ -2699,13 +2819,27 @@ async function showRecordFeeModal(actId) {
     if (!payerName)             return toast('Payer name is required', 'error'), false;
     if (!amount || amount <= 0) return toast('Valid amount is required', 'error'), false;
     if (!date)                  return toast('Date is required', 'error'), false;
+    if (Number(act.type) !== 1) return toast('Fee records can only be created for fee events', 'error'), false;
     const memberId = document.getElementById('mMemberSelect')?.value || null;
+    if (memberId) {
+      const { data: existingRecords, error: existingRecordError } = await supa.from('fee_records')
+        .select('id').eq('site_id', currentUser.site_id).eq('member_id', memberId).limit(1);
+      if (existingRecordError) return toast(existingRecordError.message, 'error'), false;
+      if (existingRecords?.length) return toast('This member already has a fee record for this site', 'error'), false;
+    }
+    const { data: receipt, error: receiptError } = await supa.from('payment_reciept')
+      .insert({}).select('id').single();
+    if (receiptError) return toast(receiptError.message, 'error'), false;
     const { error } = await supa.from('fee_records').insert({
       activity_id: actId, site_id: currentUser.site_id, collected_by: currentUser.id,
       member_id: memberId || null,
       payer_name: payerName, payer_phone: val('mPayerPhone') || null, amount, date, notes: val('mNotes') || null,
+      reciept_id: receipt.id,
     });
-    if (error) return toast(error.message, 'error'), false;
+    if (error) {
+      await supa.from('payment_reciept').delete().eq('id', receipt.id);
+      return toast(error.message, 'error'), false;
+    }
     toast('Payment recorded!', 'success'); await navigate('user-fees'); return true;
   });
 }
@@ -2726,8 +2860,9 @@ async function renderUserData() {
   setLoading(el);
   try {
     const userId = currentUser.id;
+    const dataTypeId = await getEventTypeId('data');
     const [{ data: myDataActs }, { data: myDataRecs }] = await Promise.all([
-      supa.from('activities').select('*').eq('type', 'data').contains('assigned_users', [userId]),
+      supa.from('activities').select('*').eq('type', dataTypeId).contains('assigned_users', [userId]),
       supa.from('data_records').select('*, activity:activities!activity_id(name), member:members!member_id(name)').eq('collected_by', userId).order('date', { ascending: false }),
     ]);
     const actDataMap = {};

@@ -54,6 +54,14 @@ alter table public.roles add column if not exists create_users       boolean def
 alter table public.members add column if not exists photo_url        text;
 alter table public.members add column if not exists dashboard_view_order integer;
 
+-- Profile picture storage paths (Supabase Storage bucket: profile-pictures)
+alter table public.members              add column if not exists profile_picture_path text;
+alter table public.board_committee_list add column if not exists profile_picture_path text;
+
+-- NOTE: Create the storage bucket manually (cannot be done with the anon key):
+--   Supabase Dashboard → Storage → New bucket → Name: profile-pictures → Public bucket: ON
+--   Then add policies allowing INSERT/SELECT for the anon role (or disable RLS on the bucket).
+
 -- Circular FK: profiles.site_id → sites.id (added after sites table exists)
 do $$
 begin

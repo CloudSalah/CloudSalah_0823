@@ -356,14 +356,7 @@ body {
   flex: 1 1 150px;
   max-width: 190px;
   text-align: center;
-  cursor: pointer;
-  transition: transform .15s, box-shadow .15s, background-color .15s;
-}
-
-.committee-stamp-card:hover {
-  transform: translateY(-2px);
-  background: white;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+  cursor: default;
 }
 
 .stamp-photo-frame {

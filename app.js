@@ -1425,6 +1425,30 @@ async function showEditRAAdminModal(userId) {
 }
 
 // ============================================================
+//  PROFILE PICTURE STORAGE (Supabase Storage bucket)
+// ============================================================
+
+const PROFILE_PIC_BUCKET = 'profile-pictures';
+
+// Resolves a stored profile_picture_path to a public URL (returns null if no path).
+function profilePicUrl(path) {
+  if (!path) return null;
+  try {
+    const { data } = supa.storage.from(PROFILE_PIC_BUCKET).getPublicUrl(path);
+    return data?.publicUrl || null;
+  } catch { return null; }
+}
+
+// Uploads a profile picture with the member UUID as the path prefix.
+async function uploadMemberProfilePic(memberId, file) {
+  const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = `${memberId}/profile_${Date.now()}.${ext}`;
+  const { error } = await supa.storage.from(PROFILE_PIC_BUCKET).upload(path, file, { upsert: true, contentType: file.type || undefined });
+  if (error) throw error;
+  return path;
+}
+
+// ============================================================
 //  SITE ADMIN — DASHBOARD
 // ============================================================
 
@@ -1457,7 +1481,7 @@ async function renderAdminDashboard() {
       return items.map(item => {
         const name = item.Name || item.name || item.member_name || item.person_name || '—';
         const roleTitle = item.Designation || item.designation || 'Board Member';
-        const photoUrl = item.photo_url || item.photo || item.image || null;
+        const photoUrl = profilePicUrl(item.profile_picture_path);
         const initials = getInitials(name);
         const photoContent = photoUrl
           ? `<img src="${esc(photoUrl)}" alt="${esc(name)}" class="stamp-photo-img" onerror="this.outerHTML='<div class=\'stamp-photo-placeholder\'>${initials}</div>'">`
@@ -1521,18 +1545,19 @@ async function renderAdminDashboard() {
         const roleTitle = slot.roleTitle;
         if (m) {
           const initials = getInitials(m.name);
-          const photoContent = m.photo_url
-            ? `<img src="${esc(m.photo_url)}" alt="${esc(m.name)}" class="stamp-photo-img" onerror="this.outerHTML='<div class=\'stamp-photo-placeholder\'>${initials}</div>'">`
+          const memberPhotoUrl = profilePicUrl(m.profile_picture_path);
+          const photoContent = memberPhotoUrl
+            ? `<img src="${esc(memberPhotoUrl)}" alt="${esc(m.name)}" class="stamp-photo-img" onerror="this.outerHTML='<div class=\'stamp-photo-placeholder\'>${initials}</div>'">`
             : `<div class="stamp-photo-placeholder">${initials}</div>`;
           return `
-            <div class="committee-stamp-card" onclick="showEditMemberRecordModal('${m.id}')" title="Click to edit member details">
+            <div class="committee-stamp-card">
               <div class="stamp-photo-frame">${photoContent}</div>
               <div class="member-name">${esc(m.name)}</div>
               <div class="member-role">${esc(roleTitle)}</div>
             </div>`;
         } else {
           return `
-            <div class="committee-stamp-card" onclick="showAddMemberRecordModal()" title="Click to add member">
+            <div class="committee-stamp-card">
               <div class="stamp-photo-frame">
                 <div class="stamp-photo-empty">👤</div>
               </div>
@@ -1811,6 +1836,12 @@ function memberRecordFormHTML(m) {
         <option value="">— Select Designation —</option>${desigOpts}
       </select>
     </div>
+    <div id="memberPhotoGroup" class="form-group" style="${isCommittee ? '' : 'display:none'}">
+      <label>Profile Picture</label>
+      ${m && m.profile_picture_path && profilePicUrl(m.profile_picture_path) ? `<div style="margin-bottom:8px"><img src="${esc(profilePicUrl(m.profile_picture_path))}" alt="Profile" style="width:64px;height:76px;object-fit:cover;border-radius:6px;border:1px solid var(--border)"></div>` : ''}
+      <input id="mMemberPhoto" type="file" accept="image/*">
+      <div style="font-size:11px;color:var(--text-light);margin-top:4px">${m && m.profile_picture_path ? 'Choose a new image to replace the current one.' : 'Optional — JPG/PNG, shown on the dashboard.'}</div>
+    </div>
     <div id="memberOthersGroup" class="form-group" style="${isOthers ? '' : 'display:none'}">
       <label>Custom Designation *</label>
       <input id="mMemberDesignationOther" type="text" value="${isOthers ? esc(rawDesig) : ''}" placeholder="Enter designation manually">
@@ -1827,7 +1858,9 @@ function toggleMemberRecordCommittee() {
   const checked = document.getElementById('mMemberIsCommittee')?.checked;
   const dg = document.getElementById('memberDesignationGroup');
   const og = document.getElementById('memberOthersGroup');
+  const pg = document.getElementById('memberPhotoGroup');
   if (dg) dg.style.display = checked ? '' : 'none';
+  if (pg) pg.style.display = checked ? '' : 'none';
   if (!checked) {
     const ds = document.getElementById('mMemberDesignation');
     if (ds) ds.value = '';
@@ -1857,7 +1890,8 @@ async function showAddMemberRecordModal() {
     const designation = desig === 'Others' ? val('mMemberDesignationOther') : desig;
     const dashOrderVal = val('mMemberDashboardOrder');
     const dashboard_view_order = dashOrderVal !== '' && !isNaN(dashOrderVal) ? parseInt(dashOrderVal, 10) : null;
-    const { error } = await supa.from('members').insert({
+    const photoFile = isCommittee ? (document.getElementById('mMemberPhoto')?.files?.[0] || null) : null;
+    const { data: newMember, error } = await supa.from('members').insert({
       site_id: currentUser.site_id,
       name,
       phone,
@@ -1865,8 +1899,15 @@ async function showAddMemberRecordModal() {
       designation:         isCommittee ? designation || null : null,
       dashboard_view_order,
       notes:               val('mMemberNotes') || null,
-    });
+    }).select('id').single();
     if (error) return toast(error.message, 'error'), false;
+    if (photoFile) {
+      try {
+        const picPath = await uploadMemberProfilePic(newMember.id, photoFile);
+        const { error: picErr } = await supa.from('members').update({ profile_picture_path: picPath }).eq('id', newMember.id);
+        if (picErr) throw picErr;
+      } catch (e) { toast('Member added, but photo upload failed: ' + e.message, 'error'); }
+    }
     toast('Member added', 'success'); await navigate('admin-members'); return true;
   });
 }
@@ -1887,6 +1928,7 @@ async function showEditMemberRecordModal(memberId) {
     const designation = desig === 'Others' ? val('mMemberDesignationOther') : desig;
     const dashOrderVal = val('mMemberDashboardOrder');
     const dashboard_view_order = dashOrderVal !== '' && !isNaN(dashOrderVal) ? parseInt(dashOrderVal, 10) : null;
+    const photoFile = isCommittee ? (document.getElementById('mMemberPhoto')?.files?.[0] || null) : null;
     const { error } = await supa.from('members').update({
       name,
       phone,
@@ -1896,6 +1938,13 @@ async function showEditMemberRecordModal(memberId) {
       notes:               val('mMemberNotes') || null,
     }).eq('id', memberId);
     if (error) return toast(error.message, 'error'), false;
+    if (photoFile) {
+      try {
+        const picPath = await uploadMemberProfilePic(memberId, photoFile);
+        const { error: picErr } = await supa.from('members').update({ profile_picture_path: picPath }).eq('id', memberId);
+        if (picErr) throw picErr;
+      } catch (e) { toast('Member updated, but photo upload failed: ' + e.message, 'error'); }
+    }
     toast('Member updated', 'success'); await navigate('admin-members'); return true;
   });
 }

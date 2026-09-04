@@ -293,6 +293,94 @@ async function renderSADashboard() {
 }
 
 // ============================================================
+//  LOCATION LOOKUP (lookup_country / lookup_state / lookup_district / lookup_city / lookup_pincode)
+// ============================================================
+
+// Fetches rows from a lookup_* table, ordered by its "order" column (falling back to the name column).
+async function lookupRows(table, filters = {}, nameCol) {
+  const run = orderCol => {
+    let q = supa.from(table).select('*');
+    Object.entries(filters).forEach(([k, v]) => { q = q.eq(k, v); });
+    return orderCol ? q.order('order').order(nameCol) : q.order(nameCol);
+  };
+  let { data, error } = await run(true);
+  if (error && /column .*order.* does not exist|42703/i.test(error.message || '')) {
+    ({ data, error } = await run(false));
+  }
+  if (error) throw error;
+  return data || [];
+}
+
+// Builds <option> tags (value = name, data-id = row id); keeps a saved value selectable even if missing from the lookup list.
+function lookupOptsHTML(rows, nameCol, selected) {
+  const idCol = `${nameCol}_id`;
+  const seen = new Set(), out = [];
+  rows.forEach(r => {
+    const v = String(r[nameCol] ?? '').trim();
+    if (v && !seen.has(v)) { seen.add(v); out.push(`<option value="${esc(v)}" data-id="${r[idCol] ?? ''}" ${v === selected ? 'selected' : ''}>${esc(v)}</option>`); }
+  });
+  if (selected && !seen.has(selected)) out.unshift(`<option value="${esc(selected)}" selected>${esc(selected)}</option>`);
+  return out.join('');
+}
+
+// Wires the cascading Country → State → District → City/Pin Code dropdowns in the site modal.
+function wireSiteLocationCascade() {
+  const countrySel  = document.getElementById('mSiteCountry');
+  const stateSel    = document.getElementById('mSiteState');
+  const districtSel = document.getElementById('mSiteDistrict');
+  const citySel     = document.getElementById('mSiteCity');
+  const pinSel      = document.getElementById('mSitePinCode');
+  if (!countrySel) return;
+
+  const fill = (sel, rows, nameCol) => {
+    sel.innerHTML = `<option value="">${sel.dataset.ph}</option>` + lookupOptsHTML(rows, nameCol, '');
+    sel.disabled  = false;
+  };
+  const block = (sel, ph) => {
+    sel.innerHTML = `<option value="">${ph}</option>`;
+    sel.disabled  = true;
+  };
+
+  countrySel.addEventListener('change', async () => {
+    const countryId = countrySel.selectedOptions[0]?.dataset.id || '';
+    block(stateSel,    countryId ? 'Loading…' : '— Select Country first —');
+    block(districtSel, '— Select State first —');
+    block(citySel,     '— Select District first —');
+    block(pinSel,      '— Select District first —');
+    if (!countryId) return;
+    try { fill(stateSel, await lookupRows('lookup_state', { country_id: countryId }, 'state'), 'state'); }
+    catch (err) { block(stateSel, '— Select Country first —'); toast(err.message, 'error'); }
+  });
+
+  stateSel.addEventListener('change', async () => {
+    const stateId = stateSel.selectedOptions[0]?.dataset.id || '';
+    block(districtSel, stateId ? 'Loading…' : '— Select State first —');
+    block(citySel,     '— Select District first —');
+    block(pinSel,      '— Select District first —');
+    if (!stateId) return;
+    try { fill(districtSel, await lookupRows('lookup_district', { state_id: stateId }, 'district'), 'district'); }
+    catch (err) { block(districtSel, '— Select State first —'); toast(err.message, 'error'); }
+  });
+
+  districtSel.addEventListener('change', async () => {
+    const districtId = districtSel.selectedOptions[0]?.dataset.id || '';
+    block(citySel, districtId ? 'Loading…' : '— Select District first —');
+    block(pinSel,  '— Select City first —');
+    if (!districtId) return;
+    try { fill(citySel, await lookupRows('lookup_city', { district_id: districtId }, 'city'), 'city'); }
+    catch (err) { block(citySel, '— Select District first —'); toast(err.message, 'error'); }
+  });
+
+  citySel.addEventListener('change', async () => {
+    const cityId = citySel.selectedOptions[0]?.dataset.id || '';
+    block(pinSel, cityId ? 'Loading…' : '— Select City first —');
+    if (!cityId) return;
+    try { fill(pinSel, await lookupRows('lookup_pincode', { city_id: cityId }, 'pincode'), 'pincode'); }
+    catch (err) { block(pinSel, '— Select City first —'); toast(err.message, 'error'); }
+  });
+}
+
+// ============================================================
 //  SUPER ADMIN — SITES
 // ============================================================
 
@@ -344,40 +432,76 @@ async function renderSASites() {
 
 async function showAddSiteModal() {
   const opts = await rangeSelectOpts('');
+  let countries;
+  try { countries = await lookupRows('lookup_country', {}, 'country'); }
+  catch (err) { return toast('Could not load country lookup: ' + err.message, 'error'); }
+  if (!countries.length) return toast('No records in lookup_country table. Please add lookup data first.', 'error');
   showModal('Add New Site', `
     <div class="form-group"><label>Range *</label>
       <select id="mSiteRangeId"><option value="">— Select Range —</option>${opts}</select>
     </div>
     <div class="form-group"><label>Jamath (Mahall) *</label><input id="mSiteName"     type="text" placeholder="Jamath or Mahall name"></div>
     <div class="form-group"><label>Area</label>             <input id="mSiteArea"     type="text" placeholder="Area"></div>
-    <div class="form-group"><label>City</label>             <input id="mSiteCity"     type="text" placeholder="City"></div>
-    <div class="form-group"><label>District</label>         <input id="mSiteDistrict" type="text" placeholder="District"></div>
-    <div class="form-group"><label>Pin Code</label>         <input id="mSitePinCode"  type="text" placeholder="Pin code"></div>
-    <div class="form-group"><label>State</label>            <input id="mSiteState"    type="text" placeholder="State"></div>
-    <div class="form-group"><label>Country</label>          <input id="mSiteCountry"  type="text" placeholder="Country"></div>
+    <div class="form-group"><label>Country *</label>
+      <select id="mSiteCountry" data-ph="— Select Country —"><option value="">— Select Country —</option>${lookupOptsHTML(countries, 'country', '')}</select>
+    </div>
+    <div class="form-group"><label>State *</label>
+      <select id="mSiteState" data-ph="— Select State —" disabled><option value="">— Select Country first —</option></select>
+    </div>
+    <div class="form-group"><label>District *</label>
+      <select id="mSiteDistrict" data-ph="— Select District —" disabled><option value="">— Select State first —</option></select>
+    </div>
+    <div class="form-group"><label>City *</label>
+      <select id="mSiteCity" data-ph="— Select City —" disabled><option value="">— Select District first —</option></select>
+    </div>
+    <div class="form-group"><label>Pin Code *</label>
+      <select id="mSitePinCode" data-ph="— Select Pin Code —" disabled><option value="">— Select District first —</option></select>
+    </div>
     <div class="form-group"><label>Description</label>      <textarea id="mSiteDesc" placeholder="Brief description..."></textarea></div>`,
   async () => {
     const rangeId = val('mSiteRangeId'), name = val('mSiteName');
     if (!rangeId) return toast('Range is required', 'error'), false;
     if (!name)    return toast('Jamath (Mahall) name is required', 'error'), false;
+    const country = val('mSiteCountry'), state = val('mSiteState'), district = val('mSiteDistrict');
+    const city = val('mSiteCity'), pinCode = val('mSitePinCode');
+    if (!country)  return toast('Country is required', 'error'), false;
+    if (!state)    return toast('State is required', 'error'), false;
+    if (!district) return toast('District is required', 'error'), false;
+    if (!city)     return toast('City is required', 'error'), false;
+    if (!pinCode)  return toast('Pin Code is required', 'error'), false;
     const { error } = await supa.from('sites').insert({
       name, range_id: rangeId,
-      area: val('mSiteArea')||null, city: val('mSiteCity')||null,
-      district: val('mSiteDistrict')||null, pin_code: val('mSitePinCode')||null,
-      state: val('mSiteState')||null, country: val('mSiteCountry')||null,
+      area: val('mSiteArea')||null, city, district, pin_code: pinCode,
+      state, country,
       description: val('mSiteDesc')||null,
     });
     if (error) return toast(error.message, 'error'), false;
     toast('Site created', 'success'); await navigate('sa-sites'); return true;
   });
+  wireSiteLocationCascade();
 }
 
 async function showEditSiteModal(siteId) {
-  const [{ data: s }, opts] = await Promise.all([
-    supa.from('sites').select('*').eq('id', siteId).single(),
-    rangeSelectOpts(''),
-  ]);
+  const { data: s } = await supa.from('sites').select('*').eq('id', siteId).single();
   if (!s) return;
+  let countries = [], states = [], districts = [], cities = [], zips = [];
+  try {
+    countries = await lookupRows('lookup_country', {}, 'country');
+    const countryRow  = countries.find(r => r.country === s.country);
+    if (countryRow) {
+      states = await lookupRows('lookup_state', { country_id: countryRow.country_id }, 'state');
+      const stateRow = states.find(r => r.state === s.state);
+      if (stateRow) {
+        districts = await lookupRows('lookup_district', { state_id: stateRow.state_id }, 'district');
+        const districtRow = districts.find(r => r.district === s.district);
+        if (districtRow) {
+          cities = await lookupRows('lookup_city', { district_id: districtRow.district_id }, 'city');
+          const cityRow = cities.find(r => r.city === s.city);
+          if (cityRow) zips = await lookupRows('lookup_pincode', { city_id: cityRow.city_id }, 'pincode');
+        }
+      }
+    }
+  } catch (err) { return toast('Could not load location lookup: ' + err.message, 'error'); }
   const rangeOpts = await rangeSelectOpts(s.range_id || '');
   showModal('Edit Site', `
     <div class="form-group"><label>Range *</label>
@@ -385,26 +509,43 @@ async function showEditSiteModal(siteId) {
     </div>
     <div class="form-group"><label>Jamath (Mahall) *</label><input id="mSiteName"     type="text" value="${esc(s.name)}"></div>
     <div class="form-group"><label>Area</label>             <input id="mSiteArea"     type="text" value="${esc(s.area     ||'')}"></div>
-    <div class="form-group"><label>City</label>             <input id="mSiteCity"     type="text" value="${esc(s.city     ||'')}"></div>
-    <div class="form-group"><label>District</label>         <input id="mSiteDistrict" type="text" value="${esc(s.district ||'')}"></div>
-    <div class="form-group"><label>Pin Code</label>         <input id="mSitePinCode"  type="text" value="${esc(s.pin_code ||'')}"></div>
-    <div class="form-group"><label>State</label>            <input id="mSiteState"    type="text" value="${esc(s.state    ||'')}"></div>
-    <div class="form-group"><label>Country</label>          <input id="mSiteCountry"  type="text" value="${esc(s.country  ||'')}"></div>
+    <div class="form-group"><label>Country *</label>
+      <select id="mSiteCountry" data-ph="— Select Country —"><option value="">— Select Country —</option>${lookupOptsHTML(countries, 'country', s.country || '')}</select>
+    </div>
+    <div class="form-group"><label>State *</label>
+      <select id="mSiteState" data-ph="— Select State —"><option value="">— Select State —</option>${lookupOptsHTML(states, 'state', s.state || '')}</select>
+    </div>
+    <div class="form-group"><label>District *</label>
+      <select id="mSiteDistrict" data-ph="— Select District —"><option value="">— Select District —</option>${lookupOptsHTML(districts, 'district', s.district || '')}</select>
+    </div>
+    <div class="form-group"><label>City *</label>
+      <select id="mSiteCity" data-ph="— Select City —"><option value="">— Select City —</option>${lookupOptsHTML(cities, 'city', s.city || '')}</select>
+    </div>
+    <div class="form-group"><label>Pin Code *</label>
+      <select id="mSitePinCode" data-ph="— Select Pin Code —"><option value="">— Select Pin Code —</option>${lookupOptsHTML(zips, 'pincode', s.pin_code || '')}</select>
+    </div>
     <div class="form-group"><label>Description</label>      <textarea id="mSiteDesc">${esc(s.description||'')}</textarea></div>`,
   async () => {
     const rangeId = val('mSiteRangeId'), name = val('mSiteName');
     if (!rangeId) return toast('Range is required', 'error'), false;
     if (!name)    return toast('Jamath (Mahall) name is required', 'error'), false;
+    const country = val('mSiteCountry'), state = val('mSiteState'), district = val('mSiteDistrict');
+    const city = val('mSiteCity'), pinCode = val('mSitePinCode');
+    if (!country)  return toast('Country is required', 'error'), false;
+    if (!state)    return toast('State is required', 'error'), false;
+    if (!district) return toast('District is required', 'error'), false;
+    if (!city)     return toast('City is required', 'error'), false;
+    if (!pinCode)  return toast('Pin Code is required', 'error'), false;
     const { error } = await supa.from('sites').update({
       name, range_id: rangeId,
-      area: val('mSiteArea')||null, city: val('mSiteCity')||null,
-      district: val('mSiteDistrict')||null, pin_code: val('mSitePinCode')||null,
-      state: val('mSiteState')||null, country: val('mSiteCountry')||null,
+      area: val('mSiteArea')||null, city, district, pin_code: pinCode,
+      state, country,
       description: val('mSiteDesc')||null,
     }).eq('id', siteId);
     if (error) return toast(error.message, 'error'), false;
     toast('Site updated', 'success'); await navigate('sa-sites'); return true;
   });
+  wireSiteLocationCascade();
 }
 
 function deleteSite(siteId) {

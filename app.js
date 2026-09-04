@@ -92,6 +92,7 @@ async function renderPanel(id) {
     'sa-ranges':            renderSARanges,
     'sa-rangeadmins':       renderSARangeAdmins,
     'sa-roles':             renderSARoles,
+    'sa-committee':         renderSACommittee,
     'rangeadmin-dashboard': renderRangeAdminDashboard,
     'ra-sites':              renderRASites,
     'ra-admins':             renderRAAdmins,
@@ -140,6 +141,7 @@ function renderSidebar() {
       <div class="nav-item" data-panel="sa-admins"      onclick="navigate('sa-admins')"><span class="nav-icon">👤</span>Site Admins</div>
       <div class="nav-item" data-panel="sa-rangeadmins" onclick="navigate('sa-rangeadmins')"><span class="nav-icon">👤</span>Range Admins</div>
       <div class="nav-item" data-panel="sa-roles"       onclick="navigate('sa-roles')"><span class="nav-icon">🏷️</span>Roles</div>
+      <div class="nav-item" data-panel="sa-committee"   onclick="navigate('sa-committee')"><span class="nav-icon">🧑‍⚖️</span>State Committee</div>
       <div class="nav-item" data-panel="sa-users"       onclick="navigate('sa-users')"><span class="nav-icon">👥</span>All Users</div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-panel="sa-reports" onclick="navigate('sa-reports')"><span class="nav-icon">📈</span>Reports</div>`;
@@ -553,6 +555,190 @@ function deleteSite(siteId) {
     const { error } = await supa.from('sites').delete().eq('id', siteId);
     if (error) return toast(error.message, 'error');
     toast('Site deleted', 'success'); await navigate('sa-sites');
+  });
+}
+
+// ============================================================
+//  SUPER ADMIN — STATE COMMITTEE (board_committee_list)
+// ============================================================
+
+async function renderSACommittee() {
+  const el = document.getElementById('sa-committee');
+  setLoading(el);
+  try {
+    const [{ data: rows, error }, { data: countries }, { data: states }] = await Promise.all([
+      supa.from('board_committee_list').select('*').order('list_order'),
+      supa.from('lookup_country').select('country_id, country'),
+      supa.from('lookup_state').select('state_id, state'),
+    ]);
+    if (error) throw error;
+    const countryMap = Object.fromEntries((countries || []).map(r => [r.country_id, r.country]));
+    const stateMap   = Object.fromEntries((states    || []).map(r => [r.state_id,   r.state]));
+
+    el.innerHTML = `
+      <div class="panel-header">
+        <div><h2>State Committee</h2><p>Manage state-wide committee board members</p></div>
+        <div class="panel-header-actions"><button class="btn btn-primary" onclick="showAddCommitteeModal()">+ Add Member</button></div>
+      </div>
+      <div class="card">
+        <div class="card-body table-wrapper">
+          ${!(rows || []).length ? emptyState('🧑‍⚖️', 'No committee members yet', 'Click "Add Member" to create your first state committee member') : `
+            <table>
+              <thead><tr><th>Photo</th><th>Name</th><th>Designation</th><th>Country</th><th>State</th><th>Order</th><th>Actions</th></tr></thead>
+              <tbody>
+                ${rows.map(m => {
+                  const photo = profilePicUrl(m.profile_picture_path);
+                  const initials = (m.Name || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
+                  return `<tr>
+                    <td>${photo ? `<img src="${esc(photo)}" alt="" style="width:34px;height:42px;object-fit:cover;border-radius:4px;border:1px solid var(--border)">` : `<div class="stamp-photo-placeholder" style="width:34px;height:42px;font-size:12px;border-radius:4px">${initials}</div>`}</td>
+                    <td><strong>${esc(m.Name || '—')}</strong></td>
+                    <td>${esc(m.Designation || '—')}</td>
+                    <td>${esc(countryMap[m.country_id] || '—')}</td>
+                    <td>${esc(stateMap[m.state_id] || '—')}</td>
+                    <td>${m.list_order ?? '—'}</td>
+                    <td><div class="table-actions">
+                      <button class="btn btn-secondary btn-sm" onclick="showEditCommitteeModal(${m.id})">✏️ Edit</button>
+                      <button class="btn btn-danger btn-sm"    onclick="deleteCommitteeMember(${m.id})">🗑️</button>
+                    </div></td>
+                  </tr>`;
+                }).join('')}
+              </tbody>
+            </table>`}
+        </div>
+      </div>`;
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+// Committee member form: country → state cascading selects, name, designation, order, photo.
+async function committeeFormHTML(m) {
+  let countries = [], states = [];
+  try {
+    countries = await lookupRows('lookup_country', {}, 'country');
+    if (m && m.country_id) states = await lookupRows('lookup_state', { country_id: m.country_id }, 'state');
+  } catch (err) { toast('Could not load location lookup: ' + err.message, 'error'); }
+  const stdDesig = ['President','Vice President','Secretary','Treasurer','Committee Member','Others'];
+  const rawDesig = m?.Designation || '';
+  const isOthers = rawDesig && !stdDesig.includes(rawDesig);
+  const selectDesig = isOthers ? 'Others' : rawDesig;
+  const desigOpts = stdDesig.map(d => `<option value="${d}" ${selectDesig === d ? 'selected' : ''}>${d}</option>`).join('');
+  const countryOpts = countries.map(r => `<option value="${r.country_id}" ${m && m.country_id === r.country_id ? 'selected' : ''}>${esc(r.country)}</option>`).join('');
+  const stateOpts   = states.map(r => `<option value="${r.state_id}" ${m && m.state_id === r.state_id ? 'selected' : ''}>${esc(r.state)}</option>`).join('');
+  const photo = m && m.profile_picture_path ? profilePicUrl(m.profile_picture_path) : null;
+  return `
+    <div class="form-group"><label>Country *</label>
+      <select id="mCommCountry" onchange="onCommitteeCountryChange()"><option value="">— Select Country —</option>${countryOpts}</select>
+    </div>
+    <div class="form-group"><label>State *</label>
+      <select id="mCommState" ${m && m.country_id ? '' : 'disabled'}><option value="">${m && m.country_id ? '— Select State —' : '— Select Country first —'}</option>${stateOpts}</select>
+    </div>
+    <div class="form-group"><label>Full Name *</label>
+      <input id="mCommName" type="text" value="${m ? esc(m.Name || '') : ''}" placeholder="Member's full name">
+    </div>
+    <div class="form-group"><label>Designation *</label>
+      <select id="mCommDesignation" onchange="toggleCommitteeOthers()"><option value="">— Select Designation —</option>${desigOpts}</select>
+    </div>
+    <div id="commOthersGroup" class="form-group" style="${isOthers ? '' : 'display:none'}">
+      <label>Custom Designation *</label>
+      <input id="mCommDesignationOther" type="text" value="${isOthers ? esc(rawDesig) : ''}" placeholder="Enter designation manually">
+    </div>
+    <div class="form-group"><label>List Order (Optional)</label>
+      <input id="mCommOrder" type="number" min="1" step="1" value="${m && m.list_order !== null && m.list_order !== undefined ? m.list_order : ''}" placeholder="e.g. 1, 2, 3...">
+    </div>
+    <div class="form-group"><label>Profile Picture</label>
+      ${photo ? `<div style="margin-bottom:8px"><img src="${esc(photo)}" alt="Profile" style="width:64px;height:76px;object-fit:cover;border-radius:6px;border:1px solid var(--border)"></div>` : ''}
+      <input id="mCommPhoto" type="file" accept="image/*">
+      <div style="font-size:11px;color:var(--text-light);margin-top:4px">${photo ? 'Choose a new image to replace the current one.' : 'Optional — JPG/PNG, shown on the dashboard.'}</div>
+    </div>`;
+}
+
+// Populate states when a country is chosen in the committee form.
+async function onCommitteeCountryChange() {
+  const countrySel = document.getElementById('mCommCountry');
+  const stateSel   = document.getElementById('mCommState');
+  if (!countrySel || !stateSel) return;
+  const countryId = countrySel.value;
+  stateSel.innerHTML = `<option value="">${countryId ? 'Loading…' : '— Select Country first —'}</option>`;
+  stateSel.disabled = true;
+  if (!countryId) return;
+  try {
+    const states = await lookupRows('lookup_state', { country_id: countryId }, 'state');
+    stateSel.innerHTML = '<option value="">— Select State —</option>' + states.map(r => `<option value="${r.state_id}">${esc(r.state)}</option>`).join('');
+    stateSel.disabled = false;
+  } catch (err) { stateSel.innerHTML = '<option value="">— Select Country first —</option>'; toast(err.message, 'error'); }
+}
+
+function toggleCommitteeOthers() {
+  const v  = document.getElementById('mCommDesignation')?.value;
+  const og = document.getElementById('commOthersGroup');
+  if (og) og.style.display = v === 'Others' ? '' : 'none';
+  if (v !== 'Others' && document.getElementById('mCommDesignationOther'))
+    document.getElementById('mCommDesignationOther').value = '';
+}
+
+// Reads + validates the committee form; returns the row payload and chosen photo file, or null if invalid.
+function readCommitteeForm() {
+  const countryId = val('mCommCountry');
+  const stateId   = val('mCommState');
+  const name      = val('mCommName');
+  if (!countryId) return toast('Country is required', 'error'), null;
+  if (!stateId)   return toast('State is required', 'error'), null;
+  if (!name)      return toast('Full name is required', 'error'), null;
+  const desig = val('mCommDesignation');
+  if (!desig) return toast('Please select a designation', 'error'), null;
+  if (desig === 'Others' && !val('mCommDesignationOther')) return toast('Please enter the custom designation', 'error'), null;
+  const designation = desig === 'Others' ? val('mCommDesignationOther') : desig;
+  const orderVal = val('mCommOrder');
+  const list_order = orderVal !== '' && !isNaN(orderVal) ? parseInt(orderVal, 10) : null;
+  const photoFile = document.getElementById('mCommPhoto')?.files?.[0] || null;
+  return {
+    payload: { Name: name, Designation: designation, country_id: parseInt(countryId, 10), state_id: parseInt(stateId, 10), list_order, is_state_committee: true, is_country_committee: false },
+    photoFile,
+  };
+}
+
+async function showAddCommitteeModal() {
+  const body = await committeeFormHTML(null);
+  showModal('Add Committee Member', body, async () => {
+    const form = readCommitteeForm();
+    if (!form) return false;
+    const { data: newRow, error } = await supa.from('board_committee_list').insert(form.payload).select('id').single();
+    if (error) return toast(error.message, 'error'), false;
+    if (form.photoFile) {
+      try {
+        const picPath = await uploadProfilePic('committee_' + newRow.id, form.photoFile);
+        const { error: picErr } = await supa.from('board_committee_list').update({ profile_picture_path: picPath }).eq('id', newRow.id);
+        if (picErr) throw picErr;
+      } catch (e) { toast('Member added, but photo upload failed: ' + e.message, 'error'); }
+    }
+    toast('Committee member added', 'success'); await navigate('sa-committee'); return true;
+  });
+}
+
+async function showEditCommitteeModal(id) {
+  const { data: m } = await supa.from('board_committee_list').select('*').eq('id', id).single();
+  if (!m) return;
+  const body = await committeeFormHTML(m);
+  showModal('Edit Committee Member', body, async () => {
+    const form = readCommitteeForm();
+    if (!form) return false;
+    const { error } = await supa.from('board_committee_list').update(form.payload).eq('id', id);
+    if (error) return toast(error.message, 'error'), false;
+    if (form.photoFile) {
+      try {
+        const picPath = await uploadProfilePic('committee_' + id, form.photoFile);
+        const { error: picErr } = await supa.from('board_committee_list').update({ profile_picture_path: picPath }).eq('id', id);
+        if (picErr) throw picErr;
+      } catch (e) { toast('Member updated, but photo upload failed: ' + e.message, 'error'); }
+    }
+    toast('Committee member updated', 'success'); await navigate('sa-committee'); return true;
+  });
+}
+
+function deleteCommitteeMember(id) {
+  confirmAction('Delete this committee member? This cannot be undone.', async () => {
+    const { error } = await supa.from('board_committee_list').delete().eq('id', id);
+    if (error) return toast(error.message, 'error');
+    toast('Committee member deleted', 'success'); await navigate('sa-committee');
   });
 }
 
@@ -1439,10 +1625,10 @@ function profilePicUrl(path) {
   } catch { return null; }
 }
 
-// Uploads a profile picture with the member UUID as the path prefix.
-async function uploadMemberProfilePic(memberId, file) {
+// Uploads a profile picture with the member/record UUID as the path prefix.
+async function uploadProfilePic(recordId, file) {
   const ext  = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
-  const path = `${memberId}/profile_${Date.now()}.${ext}`;
+  const path = `${recordId}/profile_${Date.now()}.${ext}`;
   const { error } = await supa.storage.from(PROFILE_PIC_BUCKET).upload(path, file, { upsert: true, contentType: file.type || undefined });
   if (error) throw error;
   return path;
@@ -1461,16 +1647,29 @@ async function renderAdminDashboard() {
   }
   setLoading(el);
   try {
-    const [{ data: site }, { count: usersCount }, { count: actsCount }, { data: feeRecs }, { count: dataCount }, { data: expRecs }, { data: committeeMembers }, { data: boardList }] = await Promise.all([
-      supa.from('sites').select('name, address').eq('id', siteId).single(),
+    const [{ data: site }, { count: usersCount }, { count: actsCount }, { data: feeRecs }, { count: dataCount }, { data: expRecs }, { data: committeeMembers }, { data: lookupStates }, { data: lookupCountries }] = await Promise.all([
+      supa.from('sites').select('name, address, country, state').eq('id', siteId).single(),
       supa.from('profiles').select('*', { count: 'exact', head: true }).eq('site_id', siteId).eq('role', 'user'),
       supa.from('activities').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
       supa.from('fee_records').select('amount').eq('site_id', siteId),
       supa.from('data_records').select('*', { count: 'exact', head: true }).eq('site_id', siteId),
       supa.from('expenses').select('amount').eq('site_id', siteId),
       supa.from('members').select('*').eq('site_id', siteId).eq('is_community_member', true),
-      supa.from('board_committee_list').select('*').or(`site_id.eq.${siteId},site_id.is.null`),
+      supa.from('lookup_state').select('state_id, state, country_id'),
+      supa.from('lookup_country').select('country_id, country'),
     ]);
+    // Resolve this site's state_id from its stored state name, then pull its state committee board.
+    const stateRow = (lookupStates || []).find(r => r.state === site?.state);
+    let boardList = [];
+    if (stateRow) {
+      const { data } = await supa.from('board_committee_list').select('*')
+        .eq('is_state_committee', true).eq('state_id', stateRow.state_id).order('list_order');
+      boardList = data || [];
+    } else {
+      const { data } = await supa.from('board_committee_list').select('*')
+        .eq('is_state_committee', true).order('list_order');
+      boardList = data || [];
+    }
     const totalFees = (feeRecs || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
     const totalExp  = (expRecs || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
 
@@ -1502,21 +1701,9 @@ async function renderAdminDashboard() {
       return ordA - ordB;
     });
 
-    const isStateItem = item => {
-      const stateVal = item.State !== undefined ? item.State : item.state;
-      if (stateVal === null || stateVal === undefined) {
-        // If State column is NULL but site_id and range_id are also NULL, consider it a State Committee item
-        if (!item.site_id && !item.range_id) return true;
-        return false;
-      }
-      if (typeof stateVal === 'boolean') return stateVal;
-      if (typeof stateVal === 'number') return stateVal > 0;
-      if (typeof stateVal === 'string') return stateVal.trim().length > 0 && stateVal.toLowerCase() !== 'false' && stateVal !== '0';
-      return Boolean(stateVal);
-    };
-
-    const mahalluBoardItems = boardItems.filter(item => !isStateItem(item));
-    const stateBoardItems = boardItems.filter(item => isStateItem(item));
+    // The board table now only holds the state committee; the Mahallu board always comes from site members.
+    const mahalluBoardItems = [];
+    const stateBoardItems   = boardItems;
 
     let mahalluBoardHTML = '';
     if (mahalluBoardItems.length > 0) {
@@ -1903,7 +2090,7 @@ async function showAddMemberRecordModal() {
     if (error) return toast(error.message, 'error'), false;
     if (photoFile) {
       try {
-        const picPath = await uploadMemberProfilePic(newMember.id, photoFile);
+        const picPath = await uploadProfilePic(newMember.id, photoFile);
         const { error: picErr } = await supa.from('members').update({ profile_picture_path: picPath }).eq('id', newMember.id);
         if (picErr) throw picErr;
       } catch (e) { toast('Member added, but photo upload failed: ' + e.message, 'error'); }
@@ -1940,7 +2127,7 @@ async function showEditMemberRecordModal(memberId) {
     if (error) return toast(error.message, 'error'), false;
     if (photoFile) {
       try {
-        const picPath = await uploadMemberProfilePic(memberId, photoFile);
+        const picPath = await uploadProfilePic(memberId, photoFile);
         const { error: picErr } = await supa.from('members').update({ profile_picture_path: picPath }).eq('id', memberId);
         if (picErr) throw picErr;
       } catch (e) { toast('Member updated, but photo upload failed: ' + e.message, 'error'); }

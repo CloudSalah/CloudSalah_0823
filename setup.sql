@@ -58,6 +58,12 @@ alter table public.members add column if not exists dashboard_view_order integer
 alter table public.members              add column if not exists profile_picture_path text;
 alter table public.board_committee_list add column if not exists profile_picture_path text;
 
+-- board_committee_list — statewide committee board (managed from Super Admin → State Committee)
+alter table public.board_committee_list add column if not exists country_id           bigint;
+alter table public.board_committee_list add column if not exists state_id             bigint;
+alter table public.board_committee_list add column if not exists is_state_committee   boolean default true;
+alter table public.board_committee_list add column if not exists is_country_committee boolean default false;
+
 -- NOTE: Create the storage bucket manually (cannot be done with the anon key):
 --   Supabase Dashboard → Storage → New bucket → Name: profile-pictures → Public bucket: ON
 --   Then add policies allowing INSERT/SELECT for the anon role (or disable RLS on the bucket).

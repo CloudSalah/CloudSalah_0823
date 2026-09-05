@@ -106,6 +106,7 @@ async function renderPanel(id) {
     'admin-activities': renderAdminActivities,
     'admin-fees':       renderAdminFees,
     'admin-donations':  renderAdminDonations,
+    'admin-revenues':   renderAdminRevenues,
     'admin-data':       renderAdminData,
     'admin-reports':    renderAdminReports,
     'admin-association-report': renderAdminAssociationReport,
@@ -167,6 +168,7 @@ function renderSidebar() {
       <div class="nav-item" data-panel="admin-fees"       onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>
       <div class="nav-item" data-panel="admin-donations"  onclick="navigate('admin-donations')"><span class="nav-icon">🤲</span>Donations</div>
       <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
+      <div class="nav-item" data-panel="admin-revenues"   onclick="navigate('admin-revenues')"><span class="nav-icon">📈</span>Revenue</div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
       <div class="nav-item" data-panel="admin-association-report" onclick="navigate('admin-association-report')"><span class="nav-icon">📋</span>Association Report</div>
@@ -199,6 +201,7 @@ function renderSidebar() {
         <div class="nav-item" data-panel="admin-fees"       onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>
         <div class="nav-item" data-panel="admin-donations"  onclick="navigate('admin-donations')"><span class="nav-icon">🤲</span>Donations</div>
         <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
+        <div class="nav-item" data-panel="admin-revenues"   onclick="navigate('admin-revenues')"><span class="nav-icon">📈</span>Revenue</div>
         <div class="nav-section">Reports</div>
         <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
         <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
@@ -771,6 +774,13 @@ async function renderSACommittee() {
     if (error) throw error;
     const countryMap = Object.fromEntries((countries || []).map(r => [r.country_id, r.country]));
     const stateMap   = Object.fromEntries((states    || []).map(r => [r.state_id,   r.state]));
+    const sortedRows = [...(rows || [])].sort((left, right) => {
+      const countryCompare = String(countryMap[left.country_id] || '').localeCompare(String(countryMap[right.country_id] || ''));
+      if (countryCompare) return countryCompare;
+      const stateCompare = String(stateMap[left.state_id] || '').localeCompare(String(stateMap[right.state_id] || ''));
+      if (stateCompare) return stateCompare;
+      return (left.list_order ?? Number.MAX_SAFE_INTEGER) - (right.list_order ?? Number.MAX_SAFE_INTEGER);
+    });
 
     el.innerHTML = `
       <div class="panel-header">
@@ -779,11 +789,11 @@ async function renderSACommittee() {
       </div>
       <div class="card">
         <div class="card-body table-wrapper">
-          ${!(rows || []).length ? emptyState('🧑‍⚖️', 'No committee members yet', 'Click "Add Member" to create your first state committee member') : `
+          ${!sortedRows.length ? emptyState('🧑‍⚖️', 'No committee members yet', 'Click "Add Member" to create your first state committee member') : `
             <table>
               <thead><tr><th>Photo</th><th>Name</th><th>Designation</th><th>Country</th><th>State</th><th>Order</th><th>Actions</th></tr></thead>
               <tbody>
-                ${rows.map(m => {
+                ${sortedRows.map(m => {
                   const photo = profilePicUrl(m.profile_picture_path);
                   const initials = (m.Name || '?').split(' ').map(p => p[0]).join('').slice(0, 2).toUpperCase();
                   return `<tr>
@@ -4546,6 +4556,88 @@ function deleteExpense(id) {
 }
 
 // ============================================================
+//  REVENUE MODULE
+// ============================================================
+
+async function renderAdminRevenues() {
+  const el = document.getElementById('admin-revenues');
+  const siteId = currentUser.site_id;
+  if (!siteId) { el.innerHTML = noSiteMsg(); return; }
+  setLoading(el);
+  try {
+    const [{ data: categories, error: categoriesError }, { data: revenues, error: revenuesError }] = await Promise.all([
+      supa.from('revenue_categories').select('id, name').eq('site_id', siteId).order('name'),
+      supa.from('revenues').select('id, category_id, amount, description, date, category:revenue_categories!category_id(name), enteredBy:profiles!entered_by(name)').eq('site_id', siteId).order('date', { ascending: false }),
+    ]);
+    if (categoriesError || revenuesError) throw categoriesError || revenuesError;
+    const totalRevenue = (revenues || []).reduce((sum, revenue) => sum + parseFloat(revenue.amount || 0), 0);
+    el.innerHTML = `
+      <div class="panel-header"><div><h2>Revenue</h2><p>Track community revenue and categories</p></div><div class="panel-header-actions"><button class="btn btn-secondary" onclick="showAddRevenueCategoryModal()">+ Category</button><button class="btn btn-primary" onclick="showAddRevenueModal()">+ Add Revenue</button></div></div>
+      <div class="stats-grid">${statCard('📈', 'si-green', '₹' + totalRevenue.toFixed(2), 'Total Revenue')}${statCard('📂', 'si-blue', (categories || []).length, 'Categories')}${statCard('📝', 'si-purple', (revenues || []).length, 'Transactions')}</div>
+      <div class="card" style="margin-bottom:20px"><div class="card-header"><h3>Revenue Categories</h3></div><div class="card-body">
+        ${!(categories || []).length ? emptyState('📂', 'No categories yet', 'Click "+ Category" to add one') : `<div style="display:flex;flex-wrap:wrap;gap:8px">${categories.map(category => `<div style="display:flex;align-items:center;gap:6px;background:#f3f4f6;border-radius:8px;padding:6px 12px;font-size:13px"><span>${esc(category.name)}</span><button class="btn btn-danger btn-sm" style="padding:2px 7px;font-size:11px" onclick="deleteRevenueCategory('${category.id}')">🗑️</button></div>`).join('')}</div>`}
+      </div></div>
+      <div class="card"><div class="card-header"><h3>Revenue Transactions</h3></div><div class="card-body table-wrapper">
+        ${!(revenues || []).length ? emptyState('📈', 'No revenue yet', 'Click "+ Add Revenue" to record one') : `<table><thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th><th>Entered By</th><th>Action</th></tr></thead><tbody>${revenues.map(revenue => `<tr><td>${fmtDate(revenue.date)}</td><td>${esc(revenue.category?.name || '—')}</td><td>${esc(revenue.description || '—')}</td><td><strong class="text-green">₹${parseFloat(revenue.amount).toFixed(2)}</strong></td><td>${esc(revenue.enteredBy?.name || '—')}</td><td><div class="table-actions"><button class="btn btn-secondary btn-sm" onclick="showEditRevenueModal('${revenue.id}')">✏️ Edit</button><button class="btn btn-danger btn-sm" onclick="deleteRevenue('${revenue.id}')">🗑️</button></div></td></tr>`).join('')}</tbody></table>`}
+      </div></div>`;
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+async function showAddRevenueCategoryModal() {
+  showModal('Add Revenue Category', '<div class="form-group"><label>Category Name *</label><input id="mRevenueCategoryName" type="text" placeholder="e.g., Hall Rental"></div>', async () => {
+    const name = val('mRevenueCategoryName');
+    if (!name) return toast('Category name is required', 'error'), false;
+    const { error } = await supa.from('revenue_categories').insert({ site_id: currentUser.site_id, name });
+    if (error) return toast(error.message, 'error'), false;
+    toast('Revenue category added', 'success'); await navigate('admin-revenues'); return true;
+  });
+}
+
+async function showAddRevenueModal() {
+  const { data: categories, error } = await supa.from('revenue_categories').select('id, name').eq('site_id', currentUser.site_id).order('name');
+  if (error) return toast(error.message, 'error');
+  const categoryOptions = (categories || []).map(category => `<option value="${category.id}">${esc(category.name)}</option>`).join('');
+  showModal('Add Revenue', `<div class="form-group"><label>Category</label><select id="mRevenueCategory"><option value="">— Select Category —</option>${categoryOptions}</select></div><div class="form-group"><label>Amount *</label><input id="mRevenueAmount" type="number" min="0.01" step="0.01" placeholder="0.00"></div><div class="form-group"><label>Date *</label><input id="mRevenueDate" type="date" value="${new Date().toISOString().slice(0, 10)}"></div><div class="form-group"><label>Description</label><textarea id="mRevenueDescription" placeholder="Details..."></textarea></div>`, async () => saveRevenue(null));
+}
+
+async function showEditRevenueModal(revenueId) {
+  const [{ data: revenue, error: revenueError }, { data: categories, error: categoriesError }] = await Promise.all([
+    supa.from('revenues').select('id, category_id, amount, date, description').eq('id', revenueId).single(),
+    supa.from('revenue_categories').select('id, name').eq('site_id', currentUser.site_id).order('name'),
+  ]);
+  if (revenueError || categoriesError) return toast((revenueError || categoriesError).message, 'error');
+  const categoryOptions = (categories || []).map(category => `<option value="${category.id}" ${category.id === revenue.category_id ? 'selected' : ''}>${esc(category.name)}</option>`).join('');
+  showModal('Edit Revenue', `<div class="form-group"><label>Category</label><select id="mRevenueCategory"><option value="">— Select Category —</option>${categoryOptions}</select></div><div class="form-group"><label>Amount *</label><input id="mRevenueAmount" type="number" min="0.01" step="0.01" value="${parseFloat(revenue.amount || 0).toFixed(2)}"></div><div class="form-group"><label>Date *</label><input id="mRevenueDate" type="date" value="${revenue.date || ''}"></div><div class="form-group"><label>Description</label><textarea id="mRevenueDescription" placeholder="Details...">${esc(revenue.description || '')}</textarea></div>`, async () => saveRevenue(revenueId));
+}
+
+async function saveRevenue(revenueId) {
+  const amount = parseFloat(val('mRevenueAmount')), date = val('mRevenueDate');
+  if (!amount || amount <= 0) return toast('Valid amount is required', 'error'), false;
+  if (!date) return toast('Date is required', 'error'), false;
+  const payload = { category_id: val('mRevenueCategory') || null, amount, date, description: val('mRevenueDescription') || null };
+  if (!revenueId) { payload.site_id = currentUser.site_id; payload.entered_by = currentUser.id; }
+  const { error } = revenueId ? await supa.from('revenues').update(payload).eq('id', revenueId) : await supa.from('revenues').insert(payload);
+  if (error) return toast(error.message, 'error'), false;
+  toast(revenueId ? 'Revenue updated' : 'Revenue recorded', 'success'); await navigate('admin-revenues'); return true;
+}
+
+function deleteRevenueCategory(categoryId) {
+  confirmAction('Delete this category? Revenue entries in this category will lose their category.', async () => {
+    const { error } = await supa.from('revenue_categories').delete().eq('id', categoryId);
+    if (error) return toast(error.message, 'error');
+    toast('Revenue category deleted', 'success'); await navigate('admin-revenues');
+  });
+}
+
+function deleteRevenue(revenueId) {
+  confirmAction('Delete this revenue record?', async () => {
+    const { error } = await supa.from('revenues').delete().eq('id', revenueId);
+    if (error) return toast(error.message, 'error');
+    toast('Revenue deleted', 'success'); await navigate('admin-revenues');
+  });
+}
+
+// ============================================================
 //  EXPENSE REPORT
 // ============================================================
 
@@ -4701,22 +4793,39 @@ async function loadBalanceSheet() {
   if (!from || !to) return toast('Select a valid date range', 'error');
   setLoading(el);
   try {
-    const [{ data: feeRecs }, { data: expenses }] = await Promise.all([
-      supa.from('fee_records').select('amount, date, activity:activities!activity_id(name)')
+    const [{ data: feeRecs }, { data: expenses }, { data: donationEvents }, { data: donationRecords }, { data: revenues }, { data: eventTypes }] = await Promise.all([
+      supa.from('fee_records').select('amount, date, activity:activities!activity_id(name,type)')
         .eq('site_id', siteId).gte('date', from).lte('date', to),
       supa.from('expenses').select('amount, date, description, category:expense_categories!category_id(name)')
         .eq('site_id', siteId).gte('date', from).lte('date', to),
+      supa.from('activities').select('id, name, type').eq('site_id', siteId).eq('type', 3),
+      supa.from('donation_records').select('event_id, amount, collection_date').gte('collection_date', from).lte('collection_date', to),
+      supa.from('revenues').select('amount, date, category:revenue_categories!category_id(name)')
+        .eq('site_id', siteId).gte('date', from).lte('date', to),
+      supa.from('event_types').select('id, Exclude_from_balance_sheet'),
     ]);
 
-    const totalIncome  = (feeRecs  || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+    const excludedTypeIds = new Set((eventTypes || []).filter(eventType => eventType.Exclude_from_balance_sheet).map(eventType => Number(eventType.id)));
+    const includedFeeRecords = (feeRecs || []).filter(record => !excludedTypeIds.has(Number(record.activity?.type)));
+    const donationEventMap = Object.fromEntries((donationEvents || []).filter(event => !excludedTypeIds.has(Number(event.type))).map(event => [event.id, event.name]));
+    const siteDonations = (donationRecords || []).filter(record => donationEventMap[record.event_id]);
+    const totalIncome  = [...includedFeeRecords, ...siteDonations, ...(revenues || [])].reduce((s, r) => s + parseFloat(r.amount || 0), 0);
     const totalExpense = (expenses || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
     const balance      = totalIncome - totalExpense;
 
     // Income breakdown by activity
     const incomeByAct = {};
-    (feeRecs || []).forEach(r => {
+    includedFeeRecords.forEach(r => {
       const k = r.activity?.name || 'Unknown Event';
       incomeByAct[k] = (incomeByAct[k] || 0) + parseFloat(r.amount || 0);
+    });
+    siteDonations.forEach(record => {
+      const key = `Donation: ${donationEventMap[record.event_id]}`;
+      incomeByAct[key] = (incomeByAct[key] || 0) + parseFloat(record.amount || 0);
+    });
+    (revenues || []).forEach(record => {
+      const key = `Revenue: ${record.category?.name || 'Uncategorised'}`;
+      incomeByAct[key] = (incomeByAct[key] || 0) + parseFloat(record.amount || 0);
     });
 
     // Expense breakdown by category

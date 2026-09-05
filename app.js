@@ -93,6 +93,9 @@ async function renderPanel(id) {
     'sa-rangeadmins':       renderSARangeAdmins,
     'sa-roles':             renderSARoles,
     'sa-committee':         renderSACommittee,
+    'sa-locations':         renderSALocations,
+    'sa-designations':      renderSADesignations,
+    'sa-relationships':     renderSARelationships,
     'rangeadmin-dashboard': renderRangeAdminDashboard,
     'ra-sites':              renderRASites,
     'ra-admins':             renderRAAdmins,
@@ -102,12 +105,15 @@ async function renderPanel(id) {
     'admin-dependents': renderAdminDependents,
     'admin-activities': renderAdminActivities,
     'admin-fees':       renderAdminFees,
+    'admin-donations':  renderAdminDonations,
     'admin-data':       renderAdminData,
     'admin-reports':    renderAdminReports,
+    'admin-association-report': renderAdminAssociationReport,
     'admin-expense-report': renderAdminExpenseReport,
     'admin-balance-sheet':  renderAdminBalanceSheet,
     'user-dashboard':   renderUserDashboard,
     'user-fees':        renderUserFees,
+    'user-donations':   renderUserDonations,
     'user-data':        renderUserData,
     'user-history':     renderUserHistory,
     'user-events':      renderUserEvents,
@@ -142,6 +148,9 @@ function renderSidebar() {
       <div class="nav-item" data-panel="sa-rangeadmins" onclick="navigate('sa-rangeadmins')"><span class="nav-icon">👤</span>Range Admins</div>
       <div class="nav-item" data-panel="sa-roles"       onclick="navigate('sa-roles')"><span class="nav-icon">🏷️</span>Roles</div>
       <div class="nav-item" data-panel="sa-committee"   onclick="navigate('sa-committee')"><span class="nav-icon">🧑‍⚖️</span>State Committee</div>
+      <div class="nav-item" data-panel="sa-locations"   onclick="navigate('sa-locations')"><span class="nav-icon">📍</span>Location Setup</div>
+      <div class="nav-item" data-panel="sa-designations" onclick="navigate('sa-designations')"><span class="nav-icon">🏷️</span>Designation Setup</div>
+      <div class="nav-item" data-panel="sa-relationships" onclick="navigate('sa-relationships')"><span class="nav-icon">👨‍👩‍👧‍👦</span>Relationship Setup</div>
       <div class="nav-item" data-panel="sa-users"       onclick="navigate('sa-users')"><span class="nav-icon">👥</span>All Users</div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-panel="sa-reports" onclick="navigate('sa-reports')"><span class="nav-icon">📈</span>Reports</div>`;
@@ -156,9 +165,11 @@ function renderSidebar() {
       <div class="nav-item" data-panel="admin-activities" onclick="navigate('admin-activities')"><span class="nav-icon">📋</span>Manage Events</div>
       <div class="nav-section">Finance</div>
       <div class="nav-item" data-panel="admin-fees"       onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>
+      <div class="nav-item" data-panel="admin-donations"  onclick="navigate('admin-donations')"><span class="nav-icon">🤲</span>Donations</div>
       <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
+      <div class="nav-item" data-panel="admin-association-report" onclick="navigate('admin-association-report')"><span class="nav-icon">📋</span>Association Report</div>
       <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
       <div class="nav-item" data-panel="admin-balance-sheet"  onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>
       <div class="nav-section">Collections</div>
@@ -186,6 +197,7 @@ function renderSidebar() {
         <div class="nav-item" data-panel="admin-activities" onclick="navigate('admin-activities')"><span class="nav-icon">📋</span>Manage Events</div>
         <div class="nav-section">Finance</div>
         <div class="nav-item" data-panel="admin-fees"       onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>
+        <div class="nav-item" data-panel="admin-donations"  onclick="navigate('admin-donations')"><span class="nav-icon">🤲</span>Donations</div>
         <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
         <div class="nav-section">Reports</div>
         <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
@@ -212,6 +224,7 @@ function renderSidebar() {
       ${showDeps    ? `<div class="nav-item" data-panel="admin-dependents" onclick="navigate('admin-dependents')"><span class="nav-icon">👶</span>Dependents</div>` : ''}
       <div class="nav-section">My Work</div>
       ${showFee    ? `<div class="nav-item" data-panel="user-fees"    onclick="navigate('user-fees')"><span class="nav-icon">💰</span>Payment Collections</div>` : ''}
+      ${showFee    ? `<div class="nav-item" data-panel="user-donations" onclick="navigate('user-donations')"><span class="nav-icon">🤲</span>Donations</div>` : ''}
       ${showData   ? `<div class="nav-item" data-panel="user-data"    onclick="navigate('user-data')"><span class="nav-icon">📁</span>Data Collection</div>` : ''}
       <div class="nav-item" data-panel="user-history" onclick="navigate('user-history')"><span class="nav-icon">🕑</span>My History</div>
       ${showEvents   ? `<div class="nav-item" data-panel="user-events"  onclick="navigate('user-events')"><span class="nav-icon">📋</span>Manage Events</div>` : ''}
@@ -323,6 +336,190 @@ function lookupOptsHTML(rows, nameCol, selected) {
   });
   if (selected && !seen.has(selected)) out.unshift(`<option value="${esc(selected)}" selected>${esc(selected)}</option>`);
   return out.join('');
+}
+
+async function findOrCreateLookupRow(table, nameCol, value, parentFilter = {}) {
+  let query = supa.from(table).select('*').eq(nameCol, value).limit(1);
+  Object.entries(parentFilter).forEach(([column, parentValue]) => { query = query.eq(column, parentValue); });
+  const { data: existing, error: findError } = await query;
+  if (findError) throw findError;
+  if (existing?.[0]) return existing[0];
+  const { data: created, error: createError } = await supa.from(table)
+    .insert({ [nameCol]: value, ...parentFilter }).select('*').single();
+  if (createError) throw createError;
+  return created;
+}
+
+async function renderSALocations() {
+  const el = document.getElementById('sa-locations');
+  setLoading(el);
+  try {
+    const [{ count: countryCount }, { count: stateCount }, { count: districtCount }, { count: cityCount }, { count: pinCount }] = await Promise.all([
+      supa.from('lookup_country').select('*', { count: 'exact', head: true }),
+      supa.from('lookup_state').select('*', { count: 'exact', head: true }),
+      supa.from('lookup_district').select('*', { count: 'exact', head: true }),
+      supa.from('lookup_city').select('*', { count: 'exact', head: true }),
+      supa.from('lookup_pincode').select('*', { count: 'exact', head: true }),
+    ]);
+    el.innerHTML = `
+      <div class="panel-header"><div><h2>Location Setup</h2><p>Manage country, state, district, city, and pin code lookup values</p></div><button class="btn btn-primary" onclick="showAddLocationModal()">+ Add Location</button></div>
+      <div class="stats-grid">
+        ${statCard('🌐', 'si-blue', countryCount || 0, 'Countries')}
+        ${statCard('🗺️', 'si-teal', stateCount || 0, 'States')}
+        ${statCard('📍', 'si-yellow', districtCount || 0, 'Districts')}
+        ${statCard('🏙️', 'si-purple', cityCount || 0, 'Cities')}
+        ${statCard('📮', 'si-green', pinCount || 0, 'Pin Codes')}
+      </div>`;
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+async function renderSADesignations() {
+  const el = document.getElementById('sa-designations');
+  setLoading(el);
+  try {
+    const { data: designations, error } = await supa.from('lookup_designation').select('id, designation, order').order('order').order('designation');
+    if (error) throw error;
+    el.innerHTML = `
+      <div class="panel-header"><div><h2>Designation Setup</h2><p>Manage designations for association committee members</p></div><button class="btn btn-primary" onclick="showAddDesignationModal()">+ Add Designation</button></div>
+      <div class="card"><div class="card-body table-wrapper">
+        ${!(designations || []).length ? emptyState('🏷️', 'No designations yet', 'Add a designation to use it in association events') : `<table>
+          <thead><tr><th>Designation</th><th>Order</th></tr></thead>
+          <tbody>${designations.map(item => `<tr><td><strong>${esc(item.designation || '—')}</strong></td><td>${item.order ?? '—'}</td></tr>`).join('')}</tbody>
+        </table>`}
+      </div></div>`;
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+function showAddDesignationModal() {
+  showModal('Add Designation', `
+    <div class="form-group"><label>Designation *</label><input id="mDesignationName" type="text" placeholder="e.g., President"></div>
+    <div class="form-group"><label>Display Order</label><input id="mDesignationOrder" type="number" min="1" step="1" placeholder="e.g., 1"></div>`,
+  async () => {
+    const designation = val('mDesignationName');
+    const orderValue = val('mDesignationOrder');
+    if (!designation) return toast('Designation is required', 'error'), false;
+    const { error } = await supa.from('lookup_designation').insert({
+      designation,
+      order: orderValue === '' ? null : parseInt(orderValue, 10),
+    });
+    if (error) return toast(error.message, 'error'), false;
+    toast('Designation added', 'success'); await navigate('sa-designations'); return true;
+  });
+}
+
+async function renderSARelationships() {
+  const el = document.getElementById('sa-relationships');
+  setLoading(el);
+  try {
+    const { data: relationships, error } = await supa.from('lookup_relationship').select('id, relation, order').order('order').order('relation');
+    if (error) throw error;
+    el.innerHTML = `
+      <div class="panel-header"><div><h2>Relationship Setup</h2><p>Manage guardian relationships for dependent members</p></div><button class="btn btn-primary" onclick="showAddRelationshipModal()">+ Add Relationship</button></div>
+      <div class="card"><div class="card-body table-wrapper">
+        ${!(relationships || []).length ? emptyState('👨‍👩‍👧‍👦', 'No relationships yet', 'Add a relationship to use it for dependents') : `<table>
+          <thead><tr><th>Relationship</th><th>Order</th></tr></thead>
+          <tbody>${relationships.map(item => `<tr><td><strong>${esc(item.relation || '—')}</strong></td><td>${item.order ?? '—'}</td></tr>`).join('')}</tbody>
+        </table>`}
+      </div></div>`;
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+function showAddRelationshipModal() {
+  showModal('Add Relationship', `
+    <div class="form-group"><label>Relationship *</label><input id="mRelationshipName" type="text" placeholder="e.g., Father"></div>
+    <div class="form-group"><label>Display Order</label><input id="mRelationshipOrder" type="number" min="1" step="1" placeholder="e.g., 1"></div>`,
+  async () => {
+    const relation = val('mRelationshipName');
+    const orderValue = val('mRelationshipOrder');
+    if (!relation) return toast('Relationship is required', 'error'), false;
+    const { error } = await supa.from('lookup_relationship').insert({
+      relation,
+      order: orderValue === '' ? null : parseInt(orderValue, 10),
+    });
+    if (error) return toast(error.message, 'error'), false;
+    toast('Relationship added', 'success'); await navigate('sa-relationships'); return true;
+  });
+}
+
+async function showAddLocationModal() {
+  let countries;
+  try { countries = await lookupRows('lookup_country', {}, 'country'); }
+  catch (err) { return toast(err.message, 'error'); }
+  showModal('Add Location', `
+    <div class="form-group"><label>Add *</label><select id="mLocationType" onchange="toggleLocationSetupFields()"><option value="country">Country</option><option value="state">State</option><option value="district">District</option><option value="city">City</option><option value="pincode">Pin Code</option></select></div>
+    <div id="locationCountryGroup" class="form-group" style="display:none"><label>Country *</label><select id="mLocationCountry" data-ph="— Select Country —"><option value="">— Select Country —</option>${lookupOptsHTML(countries, 'country', '')}</select></div>
+    <div id="locationStateGroup" class="form-group" style="display:none"><label>State *</label><select id="mLocationState" data-ph="— Select State —" disabled><option value="">— Select Country first —</option></select></div>
+    <div id="locationDistrictGroup" class="form-group" style="display:none"><label>District *</label><select id="mLocationDistrict" data-ph="— Select District —" disabled><option value="">— Select State first —</option></select></div>
+    <div id="locationCityGroup" class="form-group" style="display:none"><label>City *</label><select id="mLocationCity" data-ph="— Select City —" disabled><option value="">— Select District first —</option></select></div>
+    <div class="form-group"><label id="mLocationValueLabel">Country *</label><input id="mLocationValue" type="text" placeholder="e.g., India"></div>`,
+  async () => {
+    const type = val('mLocationType'), value = val('mLocationValue');
+    const countryId = document.getElementById('mLocationCountry')?.selectedOptions[0]?.dataset.id || '';
+    const stateId = document.getElementById('mLocationState')?.selectedOptions[0]?.dataset.id || '';
+    const districtId = document.getElementById('mLocationDistrict')?.selectedOptions[0]?.dataset.id || '';
+    const cityId = document.getElementById('mLocationCity')?.selectedOptions[0]?.dataset.id || '';
+    if (!value) return toast('Location value is required', 'error'), false;
+    if (type === 'state' && !countryId) return toast('Country is required', 'error'), false;
+    if (type === 'district' && !stateId) return toast('State is required', 'error'), false;
+    if (type === 'city' && !districtId) return toast('District is required', 'error'), false;
+    if (type === 'pincode' && !cityId) return toast('City is required', 'error'), false;
+    const configs = {
+      country: ['lookup_country', 'country', {}],
+      state: ['lookup_state', 'state', { country_id: countryId }],
+      district: ['lookup_district', 'district', { state_id: stateId }],
+      city: ['lookup_city', 'city', { district_id: districtId }],
+      pincode: ['lookup_pincode', 'pincode', { city_id: cityId }],
+    };
+    try {
+      const [table, nameCol, parentFilter] = configs[type];
+      await findOrCreateLookupRow(table, nameCol, value, parentFilter);
+    }
+    catch (err) { return toast(err.message, 'error'), false; }
+    toast('Location saved', 'success'); await navigate('sa-locations'); return true;
+  });
+  wireLocationSetupCascade();
+}
+
+function toggleLocationSetupFields() {
+  const type = val('mLocationType');
+  const levels = ['Country', 'State', 'District', 'City'];
+  const labels = { country: 'Country', state: 'State', district: 'District', city: 'City', pincode: 'Pin Code' };
+  levels.forEach((level, index) => {
+    const group = document.getElementById(`location${level}Group`);
+    if (group) group.style.display = index < ['country', 'state', 'district', 'city', 'pincode'].indexOf(type) ? '' : 'none';
+  });
+  const valueLabel = document.getElementById('mLocationValueLabel');
+  const valueInput = document.getElementById('mLocationValue');
+  if (valueLabel) valueLabel.textContent = `${labels[type]} *`;
+  if (valueInput) valueInput.placeholder = `Enter ${labels[type].toLowerCase()}`;
+}
+
+function wireLocationSetupCascade() {
+  const countrySel = document.getElementById('mLocationCountry');
+  const stateSel = document.getElementById('mLocationState');
+  const districtSel = document.getElementById('mLocationDistrict');
+  const citySel = document.getElementById('mLocationCity');
+  if (!countrySel || !stateSel || !districtSel || !citySel) return;
+  const block = (select, placeholder) => { select.innerHTML = `<option value="">${placeholder}</option>`; select.disabled = true; };
+  const fill = (select, rows, nameCol) => { select.innerHTML = `<option value="">${select.dataset.ph}</option>` + lookupOptsHTML(rows, nameCol, ''); select.disabled = false; };
+  countrySel.addEventListener('change', async () => {
+    const countryId = countrySel.selectedOptions[0]?.dataset.id || '';
+    block(stateSel, countryId ? 'Loading…' : '— Select Country first —'); block(districtSel, '— Select State first —'); block(citySel, '— Select District first —');
+    if (!countryId) return;
+    try { fill(stateSel, await lookupRows('lookup_state', { country_id: countryId }, 'state'), 'state'); } catch (err) { toast(err.message, 'error'); }
+  });
+  stateSel.addEventListener('change', async () => {
+    const stateId = stateSel.selectedOptions[0]?.dataset.id || '';
+    block(districtSel, stateId ? 'Loading…' : '— Select State first —'); block(citySel, '— Select District first —');
+    if (!stateId) return;
+    try { fill(districtSel, await lookupRows('lookup_district', { state_id: stateId }, 'district'), 'district'); } catch (err) { toast(err.message, 'error'); }
+  });
+  districtSel.addEventListener('change', async () => {
+    const districtId = districtSel.selectedOptions[0]?.dataset.id || '';
+    block(citySel, districtId ? 'Loading…' : '— Select District first —');
+    if (!districtId) return;
+    try { fill(citySel, await lookupRows('lookup_city', { district_id: districtId }, 'city'), 'city'); } catch (err) { toast(err.message, 'error'); }
+  });
 }
 
 // Wires the cascading Country → State → District → City/Pin Code dropdowns in the site modal.
@@ -860,7 +1057,7 @@ async function renderSAUsers() {
   setLoading(el);
   try {
     const [{ data: allUsers, error }, { data: sites }] = await Promise.all([
-      supa.from('profiles').select('id, name, username, role, site_id, created_at').neq('role', 'superadmin').order('name'),
+      supa.from('profiles').select('id, name, username, role, site_id, created_at').in('role', ['siteadmin', 'rangeadmin']).order('name'),
       supa.from('sites').select('id, name'),
     ]);
     if (error) throw error;
@@ -868,7 +1065,7 @@ async function renderSAUsers() {
     (sites || []).forEach(s => { siteMap[s.id] = s.name; });
 
     el.innerHTML = `
-      <div class="panel-header"><div><h2>All Users</h2><p>View all users across all sites</p></div></div>
+      <div class="panel-header"><div><h2>All Users</h2><p>View site and range administrators across all sites</p></div></div>
       <div class="card">
         <div class="card-body">
           <div class="filters">
@@ -877,7 +1074,6 @@ async function renderSAUsers() {
               <option value="">All Roles</option>
               <option value="siteadmin">Site Admins</option>
               <option value="rangeadmin">Range Admins</option>
-              <option value="user">Field Users</option>
             </select>
             <select id="saUSiteF" onchange="filterSAUsers()">
               <option value="">All Sites</option>
@@ -892,7 +1088,7 @@ async function renderSAUsers() {
                   allUsers.map(u => `<tr data-role="${u.role}" data-site="${u.site_id || ''}">
                     <td><strong>${esc(u.name)}</strong></td>
                     <td>${esc(u.username)}</td>
-                    <td><span class="role-badge role-${u.role}">${u.role === 'siteadmin' ? 'Site Admin' : 'Field User'}</span></td>
+                    <td><span class="role-badge role-${u.role}">${u.role === 'siteadmin' ? 'Site Admin' : u.role === 'rangeadmin' ? 'Range Admin' : 'Field User'}</span></td>
                     <td>${u.site_id ? esc(siteMap[u.site_id] || '—') : '—'}</td>
                     <td>${fmtDate(u.created_at)}</td>
                   </tr>`).join('')}
@@ -1380,10 +1576,18 @@ async function renderRangeAdminDashboard() {
                 <span style="min-width:120px;font-weight:600;color:#6b7280">${k}</span>
                 <span>${esc(v)}</span></div>`).join('')}
           </div>
-        </div>`}
-      <button class="btn btn-primary" style="position:fixed;right:24px;bottom:24px;z-index:10;box-shadow:0 6px 18px rgba(0,0,0,.2)" onclick="showDonationModal()">＋ Donation</button>`;
+        </div>`}`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
+
+  async function renderUserDonations() {
+    const source = document.getElementById('admin-donations');
+    const target = document.getElementById('user-donations');
+    if (!source || !target) return;
+    await renderAdminDonations();
+    target.innerHTML = source.innerHTML;
+    source.innerHTML = '';
+  }
 
 // ============================================================
 //  RANGE ADMIN — SITES
@@ -1967,6 +2171,7 @@ async function renderAdminMembers() {
       .from('members')
       .select('*')
       .eq('site_id', siteId)
+      .eq('is_dependant', false)
       .order('name');
     if (error) throw error;
 
@@ -1999,7 +2204,7 @@ async function renderAdminMembers() {
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 
-function memberRecordFormHTML(m) {
+function memberRecordFormHTML(m, guardianOpts = '', relationshipOpts = '', allowDependent = false) {
   const isCommittee = m?.is_community_member || false;
   const rawDesig    = m?.designation || '';
   const stdDesig    = ['President','Vice President','Secretary','Treasurer','Committee Member'];
@@ -2017,6 +2222,13 @@ function memberRecordFormHTML(m) {
     <div class="form-group form-group-checkbox">
       <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:600;user-select:none"><input type="checkbox" id="mMemberIsCommittee" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" onchange="toggleMemberRecordCommittee()" ${isCommittee ? 'checked' : ''}> Is Committee Member?</label>
     </div>
+    ${allowDependent ? `<div class="form-group form-group-checkbox">
+      <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:600;user-select:none"><input type="checkbox" id="mMemberIsDependent" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" onchange="toggleMemberDependent()"> Is Dependant</label>
+    </div>
+    <div id="memberDependentFields" style="display:none">
+      <div class="form-group"><label>Guardian *</label><select id="mMemberGuardianId"><option value="">— Select Guardian —</option>${guardianOpts}</select></div>
+      <div class="form-group"><label>Relationship with Guardian *</label><select id="mMemberRelationshipId"><option value="">— Select Relationship —</option>${relationshipOpts}</select></div>
+    </div>` : ''}
     <div id="memberDesignationGroup" class="form-group" style="${isCommittee ? '' : 'display:none'}">
       <label>Designation *</label>
       <select id="mMemberDesignation" onchange="toggleMemberRecordOthers()">
@@ -2033,7 +2245,7 @@ function memberRecordFormHTML(m) {
       <label>Custom Designation *</label>
       <input id="mMemberDesignationOther" type="text" value="${isOthers ? esc(rawDesig) : ''}" placeholder="Enter designation manually">
     </div>
-    <div class="form-group"><label>Dashboard View Order (Optional)</label>
+    <div id="memberDashboardOrderGroup" class="form-group" style="${isCommittee ? '' : 'display:none'}"><label>Dashboard View Order (Optional)</label>
       <input id="mMemberDashboardOrder" type="number" min="1" step="1" value="${m && m.dashboard_view_order !== null && m.dashboard_view_order !== undefined ? m.dashboard_view_order : ''}" placeholder="e.g. 1, 2, 3...">
     </div>
     <div class="form-group"><label>Notes</label>
@@ -2046,12 +2258,27 @@ function toggleMemberRecordCommittee() {
   const dg = document.getElementById('memberDesignationGroup');
   const og = document.getElementById('memberOthersGroup');
   const pg = document.getElementById('memberPhotoGroup');
+  const dog = document.getElementById('memberDashboardOrderGroup');
   if (dg) dg.style.display = checked ? '' : 'none';
   if (pg) pg.style.display = checked ? '' : 'none';
+  if (dog) dog.style.display = checked ? '' : 'none';
   if (!checked) {
     const ds = document.getElementById('mMemberDesignation');
     if (ds) ds.value = '';
     if (og) og.style.display = 'none';
+  }
+}
+
+function toggleMemberDependent() {
+  const isDependent = document.getElementById('mMemberIsDependent')?.checked;
+  const dependentFields = document.getElementById('memberDependentFields');
+  const committeeGroup = document.getElementById('mMemberIsCommittee')?.closest('.form-group');
+  const committee = document.getElementById('mMemberIsCommittee');
+  if (dependentFields) dependentFields.style.display = isDependent ? '' : 'none';
+  if (committeeGroup) committeeGroup.style.display = isDependent ? 'none' : '';
+  if (committee && isDependent) {
+    committee.checked = false;
+    toggleMemberRecordCommittee();
   }
 }
 
@@ -2064,12 +2291,34 @@ function toggleMemberRecordOthers() {
 }
 
 async function showAddMemberRecordModal() {
-  showModal('Add Member', memberRecordFormHTML(null), async () => {
+  const [{ data: guardians, error: guardiansError }, { data: relationships, error: relationshipsError }] = await Promise.all([
+    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).order('name'),
+    supa.from('lookup_relationship').select('id, relation').order('order'),
+  ]);
+  if (guardiansError || relationshipsError) return toast((guardiansError || relationshipsError).message, 'error');
+  const guardianOpts = (guardians || []).map(member => `<option value="${member.id}">${esc(member.name)}</option>`).join('');
+  const relationshipOpts = (relationships || []).map(relationship => `<option value="${relationship.id}">${esc(relationship.relation)}</option>`).join('');
+  showModal('Add Member', memberRecordFormHTML(null, guardianOpts, relationshipOpts, true), async () => {
     const name = val('mMemberName');
     if (!name) return toast('Full name is required', 'error'), false;
     const phone = val('mMemberPhone').trim();
+    const isDependent = document.getElementById('mMemberIsDependent')?.checked || false;
     if (!phone) return toast('Phone number is required', 'error'), false;
     if (!/^\d{10}$/.test(phone)) return toast('Phone number must be exactly 10 digits', 'error'), false;
+    if (isDependent) {
+      const guardianId = val('mMemberGuardianId');
+      const relationshipId = val('mMemberRelationshipId');
+      if (!guardianId) return toast('Please select a member', 'error'), false;
+      if (!relationshipId) return toast('Please select a relationship', 'error'), false;
+      const { error } = await supa.from('members').insert({
+        site_id: currentUser.site_id, guardian_id: guardianId,
+        is_dependant: true, dep_relation_to_guardian: Number(relationshipId),
+        name, phone, is_community_member: false,
+        notes: val('mMemberNotes') || null,
+      });
+      if (error) return toast(error.message, 'error'), false;
+      toast('Dependent member added', 'success'); await navigate('admin-members'); return true;
+    }
     const isCommittee = document.getElementById('mMemberIsCommittee')?.checked || false;
     if (isCommittee && !val('mMemberDesignation')) return toast('Please select a designation', 'error'), false;
     const desig = val('mMemberDesignation');
@@ -2084,7 +2333,7 @@ async function showAddMemberRecordModal() {
       phone,
       is_community_member: isCommittee,
       designation:         isCommittee ? designation || null : null,
-      dashboard_view_order,
+      dashboard_view_order: isCommittee ? dashboard_view_order : null,
       notes:               val('mMemberNotes') || null,
     }).select('id').single();
     if (error) return toast(error.message, 'error'), false;
@@ -2155,11 +2404,18 @@ async function renderAdminDependents() {
   setLoading(el);
   try {
     const { data: dependents, error } = await supa
-      .from('dependents')
-      .select('*, guardian:members!guardian_id(id,name)')
+      .from('members')
+      .select('*')
       .eq('site_id', siteId)
+      .eq('is_dependant', true)
       .order('name');
     if (error) throw error;
+    const guardianIds = [...new Set((dependents || []).map(dependent => dependent.guardian_id).filter(Boolean))];
+    const { data: guardians, error: guardiansError } = guardianIds.length
+      ? await supa.from('members').select('id, name').in('id', guardianIds)
+      : { data: [], error: null };
+    if (guardiansError) throw guardiansError;
+    const guardianMap = Object.fromEntries((guardians || []).map(guardian => [guardian.id, guardian.name]));
 
     el.innerHTML = `
       <div class="panel-header">
@@ -2174,7 +2430,7 @@ async function renderAdminDependents() {
               <tbody>
                 ${dependents.map(d => `<tr>
                   <td><strong>${esc(d.name)}</strong></td>
-                  <td>${d.guardian?.name ? esc(d.guardian.name) : '<span class="badge badge-warning">Unassigned</span>'}</td>
+                  <td>${d.guardian_id && guardianMap[d.guardian_id] ? esc(guardianMap[d.guardian_id]) : '<span class="badge badge-warning">Unassigned</span>'}</td>
                   <td>${esc(d.phone || '—')}</td>
                   <td>${esc(d.notes || '—')}</td>
                   <td><div class="table-actions">
@@ -2190,24 +2446,33 @@ async function renderAdminDependents() {
 }
 
 async function guardianSelectOpts(siteId, selectedId) {
-  const { data: members } = await supa.from('members').select('id, name').eq('site_id', siteId).order('name');
+  const { data: members } = await supa.from('members').select('id, name').eq('site_id', siteId).eq('is_dependant', false).order('name');
   return (members || []).map(m =>
     `<option value="${m.id}" ${m.id === selectedId ? 'selected' : ''}>${esc(m.name)}</option>`
   ).join('');
 }
 
-function dependentFormHTML(guardianOpts, d) {
+async function relationshipSelectOpts(selectedId) {
+  const { data: relationships, error } = await supa.from('lookup_relationship').select('id, relation').order('order');
+  if (error) throw error;
+  return (relationships || []).map(relationship =>
+    `<option value="${relationship.id}" ${String(relationship.id) === String(selectedId) ? 'selected' : ''}>${esc(relationship.relation)}</option>`
+  ).join('');
+}
+
+function dependentFormHTML(guardianOpts, relationshipOpts, d) {
   return `
-    <div class="form-group"><label>Guardian *</label>
-      <select id="mGuardianId">
-        <option value="">— Select Guardian —</option>${guardianOpts}
-      </select>
-    </div>
     <div class="form-group"><label>Full Name *</label>
       <input id="mDepName" type="text" value="${d ? esc(d.name) : ''}" placeholder="Dependent's full name">
     </div>
     <div class="form-group"><label>Phone</label>
       <input id="mDepPhone" type="tel" value="${d ? esc(d.phone || '') : ''}" placeholder="Phone number">
+    </div>
+    <div class="form-group"><label>Guardian *</label>
+      <select id="mGuardianId"><option value="">— Select Guardian —</option>${guardianOpts}</select>
+    </div>
+    <div class="form-group"><label>Relationship with Guardian *</label>
+      <select id="mDepRelationshipId"><option value="">— Select Relationship —</option>${relationshipOpts}</select>
     </div>
     <div class="form-group"><label>Notes</label>
       <textarea id="mDepNotes" placeholder="Any additional notes...">${d ? esc(d.notes || '') : ''}</textarea>
@@ -2215,16 +2480,27 @@ function dependentFormHTML(guardianOpts, d) {
 }
 
 async function showAddDependentModal() {
-  const opts = await guardianSelectOpts(currentUser.site_id, '');
-  showModal('Add Dependent', dependentFormHTML(opts, null), async () => {
+  let guardianOpts, relationshipOpts;
+  try {
+    [guardianOpts, relationshipOpts] = await Promise.all([
+      guardianSelectOpts(currentUser.site_id, ''),
+      relationshipSelectOpts(''),
+    ]);
+  } catch (err) { return toast(err.message, 'error'); }
+  showModal('Add Dependent', dependentFormHTML(guardianOpts, relationshipOpts, null), async () => {
     const name = val('mDepName');
     if (!name) return toast('Full name is required', 'error'), false;
-    const { error } = await supa.from('dependents').insert({
-      site_id:     currentUser.site_id,
-      guardian_id: val('mGuardianId') || null,
-      name,
-      phone:       val('mDepPhone') || null,
-      notes:       val('mDepNotes') || null,
+    const phone = val('mDepPhone').trim();
+    if (!phone) return toast('Phone number is required', 'error'), false;
+    if (!/^\d{10}$/.test(phone)) return toast('Phone number must be exactly 10 digits', 'error'), false;
+    const guardianId = val('mGuardianId');
+    const relationshipId = val('mDepRelationshipId');
+    if (!guardianId) return toast('Guardian is required', 'error'), false;
+    if (!relationshipId) return toast('Relationship with guardian is required', 'error'), false;
+    const { error } = await supa.from('members').insert({
+      site_id: currentUser.site_id, name, phone,
+      guardian_id: guardianId, is_dependant: true, dep_relation_to_guardian: Number(relationshipId),
+      is_community_member: false, notes: val('mDepNotes') || null,
     });
     if (error) return toast(error.message, 'error'), false;
     toast('Dependent added', 'success'); await navigate('admin-dependents'); return true;
@@ -2232,20 +2508,27 @@ async function showAddDependentModal() {
 }
 
 async function showEditDependentModal(depId) {
-  const [{ data: d }, opts] = await Promise.all([
-    supa.from('dependents').select('*').eq('id', depId).single(),
+  const [{ data: d }, guardianOpts, relationshipOpts] = await Promise.all([
+    supa.from('members').select('*').eq('id', depId).eq('is_dependant', true).single(),
     guardianSelectOpts(currentUser.site_id, ''),
+    relationshipSelectOpts(''),
   ]);
   if (!d) return;
-  const guardianOpts = await guardianSelectOpts(currentUser.site_id, d.guardian_id || '');
-  showModal('Edit Dependent', dependentFormHTML(guardianOpts, d), async () => {
+  const selectedGuardianOpts = await guardianSelectOpts(currentUser.site_id, d.guardian_id || '');
+  const selectedRelationshipOpts = await relationshipSelectOpts(d.dep_relation_to_guardian || '');
+  showModal('Edit Dependent', dependentFormHTML(selectedGuardianOpts, selectedRelationshipOpts, d), async () => {
     const name = val('mDepName');
     if (!name) return toast('Full name is required', 'error'), false;
-    const { error } = await supa.from('dependents').update({
-      guardian_id: val('mGuardianId') || null,
-      name,
-      phone:       val('mDepPhone') || null,
-      notes:       val('mDepNotes') || null,
+    const phone = val('mDepPhone').trim();
+    if (!phone) return toast('Phone number is required', 'error'), false;
+    if (!/^\d{10}$/.test(phone)) return toast('Phone number must be exactly 10 digits', 'error'), false;
+    const guardianId = val('mGuardianId');
+    const relationshipId = val('mDepRelationshipId');
+    if (!guardianId) return toast('Guardian is required', 'error'), false;
+    if (!relationshipId) return toast('Relationship with guardian is required', 'error'), false;
+    const { error } = await supa.from('members').update({
+      guardian_id: guardianId, dep_relation_to_guardian: Number(relationshipId),
+      name, phone, notes: val('mDepNotes') || null,
     }).eq('id', depId);
     if (error) return toast(error.message, 'error'), false;
     toast('Dependent updated', 'success'); await navigate('admin-dependents'); return true;
@@ -2254,7 +2537,7 @@ async function showEditDependentModal(depId) {
 
 function deleteDependent(depId) {
   confirmAction('Delete this dependent record? This cannot be undone.', async () => {
-    const { error } = await supa.from('dependents').delete().eq('id', depId);
+    const { error } = await supa.from('members').delete().eq('id', depId).eq('is_dependant', true);
     if (error) return toast(error.message, 'error');
     toast('Dependent deleted', 'success'); await navigate('admin-dependents');
   });
@@ -2444,9 +2727,36 @@ function setActStatusFilter(elId, status) {
   }
 }
 
-function activityFormHTML(a, eventTypes = null) {
+function associationSetupHTML(members = [], dependents = [], designations = [], records = []) {
+  const participantOptions = `
+    <option value="">— Select person —</option>
+    <optgroup label="Members">${members.map(member => `<option value="${member.id}">${esc(member.name)}</option>`).join('')}</optgroup>
+    <optgroup label="Dependents">${dependents.map(dependent => `<option value="${dependent.id}">${esc(dependent.name)}</option>`).join('')}</optgroup>`;
+  const designationOptions = `<option value="">— Select designation —</option>${designations.map(designation => `<option value="${designation.id}">${esc(designation.designation)}</option>`).join('')}`;
+  return `<div id="associationSetupFields" style="display:none">
+    <div class="form-group" style="margin-bottom:8px"><label>Association Members</label>
+      <div class="f-12" style="color:#6b7280">Select up to three members or dependents and assign their designations.</div>
+    </div>
+    <div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:4px">
+      <label style="font-size:12px;font-weight:600">Association Member</label>
+      <label style="font-size:12px;font-weight:600">Designation</label>
+    </div>
+    ${[1, 2, 3].map(index => {
+      const record = records[index - 1] || {};
+      const selectedPerson = String(record.association_member_id || '');
+      const selectedDesignation = String(record.designation_id || '');
+      const selectedPeopleOptions = participantOptions.replace(`value="${selectedPerson}"`, `value="${selectedPerson}" selected`);
+      const selectedDesignationOptions = designationOptions.replace(`value="${selectedDesignation}"`, `value="${selectedDesignation}" selected`);
+      return `<div style="display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;margin-bottom:10px">
+      <div class="form-group" style="margin:0"><select id="mAssociationPerson${index}" aria-label="Association Member ${index}">${selectedPeopleOptions}</select></div>
+      <div class="form-group" style="margin:0"><select id="mAssociationDesignation${index}" aria-label="Designation ${index}">${selectedDesignationOptions}</select></div>
+    </div>`}).join('')}
+  </div>`;
+}
+
+function activityFormHTML(a, eventTypes = null, associationData = {}) {
   const isFee = eventTypes
-    ? (a ? Number(a.type) === 1 : true)
+    ? (a ? [1, 4].includes(Number(a.type)) : true)
     : String(a?.type || '').toLowerCase() === 'fee';
   const typeOptions = eventTypes
     ? `<option value="" ${a ? '' : 'selected'} disabled>Select type</option>${eventTypes.map(eventType => `<option value="${eventType.id}" ${String(eventType.id) === String(a?.type) ? 'selected' : ''}>${esc(eventType.type)}</option>`).join('')}`
@@ -2456,7 +2766,7 @@ function activityFormHTML(a, eventTypes = null) {
     <div class="form-group"><label>Activity Name *</label>
       <input id="mActName" type="text" value="${a ? esc(a.name) : ''}" placeholder="e.g., Monthly Maintenance Fee"></div>
     <div class="form-group"><label>Type *</label>
-      <select id="mActType" onchange="toggleFeeField()">
+      <select id="mActType" onchange="toggleActivityTypeFields()">
         ${typeOptions}
       </select></div>
     <div id="feeAmountField" class="form-group" ${!isFee ? 'style="display:none"' : ''}>
@@ -2464,6 +2774,7 @@ function activityFormHTML(a, eventTypes = null) {
       <input id="mActAmount" type="number" min="0" step="0.01" value="${a && a.target_amount ? a.target_amount : ''}" placeholder="0.00"></div>
     <div id="feeAllowEditField" class="form-group form-group-checkbox" ${!isFee ? 'style="display:none"' : ''}>
       <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:500;user-select:none"><input type="checkbox" id="mAllowTargetEdit" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" ${a?.allow_target_edit ? 'checked' : ''}> Allow target amount update in Payment Edit</label></div>
+    ${associationSetupHTML(associationData.members, associationData.dependents, associationData.designations, associationData.records)}
     <div class="form-group"><label>Due Date</label>
       <input id="mActDue" type="date" value="${a && a.due_date ? a.due_date : ''}"></div>
     <div class="form-group"><label>Description</label>
@@ -2471,16 +2782,21 @@ function activityFormHTML(a, eventTypes = null) {
 }
 
 async function showAddActivityModal() {
-  const { data: eventTypes, error } = await supa.from('event_types').select('id, type').order('id');
-  if (error) return toast(error.message, 'error');
-  showModal('Create Activity', activityFormHTML(null, eventTypes || []), async () => {
+  const [{ data: eventTypes, error }, { data: members, error: membersError }, { data: dependents, error: dependentsError }, { data: designations, error: designationsError }] = await Promise.all([
+    supa.from('event_types').select('id, type').order('id'),
+    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).eq('is_dependant', false).order('name'),
+    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).eq('is_dependant', true).order('name'),
+    supa.from('lookup_designation').select('id, designation').order('order'),
+  ]);
+  if (error || membersError || dependentsError || designationsError) return toast((error || membersError || dependentsError || designationsError).message, 'error');
+  showModal('Create Activity', activityFormHTML(null, eventTypes || [], { members: members || [], dependents: dependents || [], designations: designations || [] }), async () => {
     const name = val('mActName'), typeId = Number(val('mActType'));
-    const isFee = typeId === 1;
+    const isFee = [1, 4].includes(typeId);
     if (!typeId) return toast('Activity type is required', 'error'), false;
     const selectedEventType = eventTypes.find(eventType => Number(eventType.id) === typeId);
     if (!typeId) return toast('Invalid activity type selected', 'error'), false;
     if (!name) return toast('Activity name is required', 'error'), false;
-    const { error } = await supa.from('activities').insert({
+    const { data: activity, error } = await supa.from('activities').insert({
       name, type: typeId, site_id: currentUser.site_id,
       is_donation_event: Number(typeId) === 3,
       is_association_event: Number(typeId) === 4,
@@ -2489,22 +2805,45 @@ async function showAddActivityModal() {
       due_date:         val('mActDue') || null,
       description:      val('mActDesc') || null,
       assigned_users:   [],
-    });
+    }).select('id').single();
     if (error) return toast(error.message, 'error'), false;
+    if (typeId === 4) {
+      const associationMembers = [1, 2, 3].map(index => ({
+        member_id: val(`mAssociationPerson${index}`),
+        designation_id: Number(val(`mAssociationDesignation${index}`)) || null,
+      })).filter(record => record.member_id || record.designation_id);
+      if (!associationMembers.length) return toast('Select at least one association member or dependent', 'error'), false;
+      if (associationMembers.some(record => !record.member_id || !record.designation_id)) return toast('Each selected association person needs a designation', 'error'), false;
+      if (new Set(associationMembers.map(record => record.member_id)).size !== associationMembers.length) return toast('Each association person can only be selected once', 'error'), false;
+      const { error: associationError } = await supa.from('association_members').insert(associationMembers.map(record => ({
+        activity_id: activity.id,
+        association_member_id: record.member_id,
+        designation_id: record.designation_id,
+      })));
+      if (associationError) {
+        await supa.from('activities').delete().eq('id', activity.id);
+        return toast(associationError.message, 'error'), false;
+      }
+    }
     toast('Activity created', 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
   });
 }
 
 async function showEditActivityModal(actId) {
-  const [{ data: a }, { data: eventTypes, error: eventTypesError }] = await Promise.all([
+  const [{ data: a }, { data: eventTypes, error: eventTypesError }, { data: members, error: membersError }, { data: dependents, error: dependentsError }, { data: designations, error: designationsError }, { data: associationRecords, error: associationRecordsError }] = await Promise.all([
     supa.from('activities').select('*').eq('id', actId).single(),
     supa.from('event_types').select('id, type').order('id'),
+    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).eq('is_dependant', false).order('name'),
+    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).eq('is_dependant', true).order('name'),
+    supa.from('lookup_designation').select('id, designation').order('order'),
+    supa.from('association_members').select('association_member_id, designation_id').eq('activity_id', actId).order('created_at'),
   ]);
   if (!a) return;
-  if (eventTypesError) return toast(eventTypesError.message, 'error');
-  showModal('Edit Activity', activityFormHTML(a, eventTypes || []), async () => {
+  if (eventTypesError || membersError || dependentsError || designationsError) return toast((eventTypesError || membersError || dependentsError || designationsError).message, 'error');
+  if (associationRecordsError) toast('Association members could not be loaded: ' + associationRecordsError.message, 'error');
+  showModal('Edit Activity', activityFormHTML(a, eventTypes || [], { members: members || [], dependents: dependents || [], designations: designations || [], records: associationRecords || [] }), async () => {
     const name = val('mActName'), typeId = Number(val('mActType'));
-    const isFee = typeId === 1;
+    const isFee = [1, 4].includes(typeId);
     if (!name) return toast('Activity name is required', 'error'), false;
     if (!typeId) return toast('Invalid activity type selected', 'error'), false;
     const { error } = await supa.from('activities').update({
@@ -2515,46 +2854,78 @@ async function showEditActivityModal(actId) {
       description:      val('mActDesc') || null,
     }).eq('id', actId);
     if (error) return toast(error.message, 'error'), false;
+    if (typeId === 4) {
+      const associationMembers = [1, 2, 3].map(index => ({
+        member_id: val(`mAssociationPerson${index}`),
+        designation_id: Number(val(`mAssociationDesignation${index}`)) || null,
+      })).filter(record => record.member_id || record.designation_id);
+      if (!associationMembers.length) return toast('Select at least one association member or dependent', 'error'), false;
+      if (associationMembers.some(record => !record.member_id || !record.designation_id)) return toast('Each selected association person needs a designation', 'error'), false;
+      if (new Set(associationMembers.map(record => record.member_id)).size !== associationMembers.length) return toast('Each association person can only be selected once', 'error'), false;
+      const { error: deleteError } = await supa.from('association_members').delete().eq('activity_id', actId);
+      if (deleteError) return toast(deleteError.message, 'error'), false;
+      const { error: associationError } = await supa.from('association_members').insert(associationMembers.map(record => ({
+        activity_id: actId, association_member_id: record.member_id, designation_id: record.designation_id,
+      })));
+      if (associationError) return toast(associationError.message, 'error'), false;
+    } else if (Number(a.type) === 4) {
+      const { error: associationDeleteError } = await supa.from('association_members').delete().eq('activity_id', actId);
+      if (associationDeleteError) return toast(associationDeleteError.message, 'error'), false;
+    }
     toast('Activity updated', 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
   });
+  toggleActivityTypeFields();
 }
 
-function toggleFeeField() {
+function toggleActivityTypeFields() {
   const field      = document.getElementById('feeAmountField');
   const editField  = document.getElementById('feeAllowEditField');
   const type       = document.getElementById('mActType');
-  const isFee      = Number(type?.value) === 1 || type?.value.toLowerCase() === 'fee';
+  const isFee      = [1, 4].includes(Number(type?.value)) || type?.value.toLowerCase() === 'fee';
   if (field)     field.style.display     = isFee ? '' : 'none';
   if (editField) editField.style.display = isFee ? '' : 'none';
+  const associationFields = document.getElementById('associationSetupFields');
+  if (associationFields) associationFields.style.display = Number(type?.value) === 4 ? '' : 'none';
+}
+
+function toggleFeeField() {
+  toggleActivityTypeFields();
 }
 
 async function showAssignModal(actId) {
-  const [{ data: act }, { data: siteMembers }, { data: activityMembers, error: activityMembersError }] = await Promise.all([
-    supa.from('activities').select('id, name, assigned_users').eq('id', actId).single(),
-    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).order('name'),
+  const [{ data: act }, { data: siteMembers }, { data: dependents }, { data: activityMembers, error: activityMembersError }] = await Promise.all([
+    supa.from('activities').select('id, name, type, assigned_users').eq('id', actId).single(),
+    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).eq('is_dependant', false).order('name'),
+    supa.from('members').select('id, name').eq('site_id', currentUser.site_id).eq('is_dependant', true).order('name'),
     supa.from('activity_members').select('member_id').eq('activity_id', actId),
   ]);
   if (!act) return;
   if (activityMembersError) return toast(activityMembersError.message, 'error');
   const assignedMemberIds = new Set((activityMembers || []).map(assignment => assignment.member_id));
 
-  const listHTML = !(siteMembers || []).length
-    ? '<p style="color:#6b7280;font-size:13px">No members in this site. Add members first.</p>'
+  const people = [
+    ...(siteMembers || []).map(member => ({ ...member, personType: 'member' })),
+    ...(dependents || []).map(dependent => ({ ...dependent, personType: 'dependent' })),
+  ];
+  const listHTML = !people.length
+    ? '<p style="color:#6b7280;font-size:13px">No members or dependents in this site. Add them first.</p>'
     : `
-      <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#f9fafb;border-radius:8px;margin-bottom:8px;font-weight:600;font-size:13px;cursor:pointer">
-        <input type="checkbox" id="selectAllMembers" onchange="toggleSelectAllMembers()"> Select All
-      </label>
+      <div class="form-group form-group-checkbox" style="display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:8px">
+        <label class="checkbox-label" style="gap:6px"><input type="checkbox" id="showMembers" checked onchange="filterAssignablePeople()">Members</label>
+        <label class="checkbox-label" style="gap:6px"><input type="checkbox" id="showDependents" onchange="filterAssignablePeople()">Dependents</label>
+        <label class="checkbox-label" style="gap:6px"><input type="checkbox" id="selectAllMembers" onchange="toggleSelectAllMembers()">Select All</label>
+      </div>
       <div class="checkbox-group">
-        ${siteMembers.map(m => `<label>
-          <input type="checkbox" class="memberCheck" value="${m.id}" ${assignedMemberIds.has(m.id) ? 'checked' : ''}>
-          ${esc(m.name)}
+        ${people.map(person => `<label class="assignablePerson" data-person-type="${person.personType}">
+          <input type="checkbox" class="memberCheck personCheck" value="${person.id}" ${assignedMemberIds.has(person.id) ? 'checked' : ''}>
+          ${esc(person.name)}${person.personType === 'dependent' ? ' <span class="f-12" style="color:#6b7280">(Dependent)</span>' : ''}
         </label>`).join('')}
       </div>`;
 
-  showModal(`Assign Members — ${esc(act.name)}`,
+  showModal(`Assign Members — ${act.name}`,
     `<p class="f-12" style="color:#6b7280;margin-bottom:10px">Select members to assign to this activity:</p>${listHTML}`,
   async () => {
-    const selected = [...document.querySelectorAll('.memberCheck:checked')].map(c => c.value);
+    const selected = [...document.querySelectorAll('.personCheck:checked')].map(c => c.value);
     const { data: existingAssignments, error: assignmentError } = await supa
       .from('activity_members').select('member_id').eq('activity_id', actId);
     if (assignmentError) return toast(assignmentError.message, 'error'), false;
@@ -2581,15 +2952,27 @@ async function showAssignModal(actId) {
     const memberIdSet = new Set((siteMembers || []).map(member => member.id));
     const collectorAssignments = (act.assigned_users || []).filter(id => !memberIdSet.has(id));
     const { error } = await supa.from('activities')
-      .update({ assigned_users: [...new Set([...selected, ...collectorAssignments])] }).eq('id', actId);
+      .update({ assigned_users: [...new Set([...selected.filter(id => memberIdSet.has(id)), ...collectorAssignments])] }).eq('id', actId);
     if (error) return toast(error.message, 'error'), false;
-    toast(`${selected.length} member(s) assigned`, 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
+    toast(`${selected.length} person(s) assigned`, 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
   });
+  filterAssignablePeople();
 }
 
 function toggleSelectAllMembers() {
   const checked = document.getElementById('selectAllMembers')?.checked;
-  document.querySelectorAll('.memberCheck').forEach(cb => cb.checked = checked);
+  document.querySelectorAll('.assignablePerson').forEach(label => {
+    if (label.style.display !== 'none') label.querySelector('.personCheck').checked = checked;
+  });
+}
+
+function filterAssignablePeople() {
+  const showMembers = document.getElementById('showMembers')?.checked;
+  const showDependents = document.getElementById('showDependents')?.checked;
+  document.querySelectorAll('.assignablePerson').forEach(label => {
+    const isMember = label.dataset.personType === 'member';
+    label.style.display = (isMember ? showMembers : showDependents) ? '' : 'none';
+  });
 }
 
 async function showAssignCollectorsModal(actId) {
@@ -2628,6 +3011,14 @@ async function showAssignCollectorsModal(actId) {
 
 function deleteActivity(actId) {
   confirmAction('Delete this activity? All associated records will be removed.', async () => {
+    const dependentDeletes = await Promise.all([
+      supa.from('au_fee_records').delete().eq('activity_id', actId),
+      supa.from('fee_records').delete().eq('activity_id', actId),
+      supa.from('activity_members').delete().eq('activity_id', actId),
+      supa.from('association_members').delete().eq('activity_id', actId),
+    ]);
+    const deleteError = dependentDeletes.find(result => result.error)?.error;
+    if (deleteError) return toast(deleteError.message, 'error');
     const { error } = await supa.from('activities').delete().eq('id', actId);
     if (error) return toast(error.message, 'error');
     toast('Activity deleted', 'success'); await navigate(window._actNavTarget || 'admin-activities');
@@ -2642,11 +3033,16 @@ async function renderAdminFees() {
   const el = document.getElementById('admin-fees');
   const siteId = currentUser.site_id;
   if (!siteId) { el.innerHTML = noSiteMsg(); return; }
+  const activeFilters = {
+    search: document.getElementById('feeSearch')?.value || '',
+    activity: document.getElementById('feeActF')?.value || '',
+    status: document.getElementById('feeStatusF')?.value || '',
+  };
   setLoading(el);
   try {
     const feeTypeId = await getEventTypeId('fee');
     const { data: feeActs, error } = await supa.from('activities')
-      .select('id, name, target_amount').eq('site_id', siteId).eq('type', feeTypeId).order('name');
+      .select('id, name, target_amount, type').eq('site_id', siteId).in('type', [feeTypeId, 4]).order('name');
     if (error) throw error;
 
     const feeActivityIds = (feeActs || []).map(activity => activity.id);
@@ -2722,16 +3118,16 @@ async function renderAdminFees() {
       <div class="card">
         <div class="card-body">
           <div class="filters">
-            <input class="filter-grow" id="feeSearch" type="text" placeholder="🔍 Search member or event..." oninput="filterFeeTableFull()">
+            <input class="filter-grow" id="feeSearch" type="text" value="${esc(activeFilters.search)}" placeholder="🔍 Search member or event..." oninput="filterFeeTableFull()">
             <select id="feeActF" onchange="filterFeeTableFull()">
               <option value="">All Events</option>
-              ${(feeActs || []).map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
+              ${(feeActs || []).map(a => `<option value="${a.id}" ${a.id === activeFilters.activity ? 'selected' : ''}>${esc(a.name)}</option>`).join('')}
             </select>
             <select id="feeStatusF" onchange="filterFeeTableFull()">
               <option value="">All Status</option>
-              <option value="paid">Paid</option>
-              <option value="partial">Partial</option>
-              <option value="unpaid">Unpaid</option>
+              <option value="paid" ${activeFilters.status === 'paid' ? 'selected' : ''}>Paid</option>
+              <option value="partial" ${activeFilters.status === 'partial' ? 'selected' : ''}>Partial</option>
+              <option value="unpaid" ${activeFilters.status === 'unpaid' ? 'selected' : ''}>Unpaid</option>
             </select>
           </div>
           <div class="table-wrapper">
@@ -2762,18 +3158,48 @@ async function renderAdminFees() {
             </table>
           </div>
         </div>
-      </div>
-      <button class="btn btn-primary" style="position:fixed;right:24px;bottom:24px;z-index:10;box-shadow:0 6px 18px rgba(0,0,0,.2)" onclick="showDonationModal()">＋ Donation</button>`;
+      </div>`;
+    filterFeeTableFull();
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+async function renderAdminDonations() {
+  const el = document.getElementById('admin-donations');
+  const siteId = currentUser.site_id;
+  if (!siteId) { el.innerHTML = noSiteMsg(); return; }
+  setLoading(el);
+  try {
+    const [{ data: donations, error: donationsError }, { data: events, error: eventsError }] = await Promise.all([
+      supa.from('donation_records').select('id, donor_name, donor_phone, amount, collection_date, event_id, notes').order('collection_date', { ascending: false }).limit(1000),
+      supa.from('activities').select('id, name').eq('site_id', siteId).eq('type', 3),
+    ]);
+    if (donationsError || eventsError) throw donationsError || eventsError;
+    const eventMap = Object.fromEntries((events || []).map(event => [event.id, event.name]));
+    const siteDonations = (donations || []).filter(donation => eventMap[donation.event_id]);
+    const total = siteDonations.reduce((sum, donation) => sum + parseFloat(donation.amount || 0), 0);
+    el.innerHTML = `
+      <div class="panel-header"><div><h2>Donations</h2><p>Record and review donations for your site</p></div><button class="btn btn-primary" onclick="showDonationModal()">+ Record Donation</button></div>
+      <div class="stats-grid">${statCard('🤲', 'si-green', '₹' + total.toFixed(2), 'Total Donations')}</div>
+      <div class="card"><div class="card-body table-wrapper">
+        ${!siteDonations.length ? emptyState('🤲', 'No donations recorded', 'Record a donation to get started') : `<table>
+          <thead><tr><th>Donor</th><th>Phone</th><th>Event</th><th>Amount</th><th>Date</th><th>Notes</th></tr></thead>
+          <tbody>${siteDonations.map(donation => `<tr>
+            <td><strong>${esc(donation.donor_name)}</strong></td><td>${esc(donation.donor_phone || '—')}</td>
+            <td>${esc(eventMap[donation.event_id] || '—')}</td><td class="text-green">₹${parseFloat(donation.amount || 0).toFixed(2)}</td>
+            <td>${donation.collection_date ? fmtDate(donation.collection_date) : '—'}</td><td>${esc(donation.notes || '—')}</td>
+          </tr>`).join('')}</tbody>
+        </table>`}
+      </div></div>`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 
 async function showDonationModal() {
-  const [{ data: donationEvents, error: eventError }, { data: members, error: memberError }] = await Promise.all([
+  const [{ data: donationEvents, error: eventError }, { data: members, error: memberError }, { data: countries, error: countriesError }] = await Promise.all([
     supa.from('activities').select('id, name').eq('site_id', currentUser.site_id).eq('type', 3).order('name'),
     supa.from('members').select('id, name').eq('site_id', currentUser.site_id).order('name'),
+    supa.from('lookup_country').select('country_id, country').order('country'),
   ]);
-  if (eventError) return toast(eventError.message, 'error');
-  if (memberError) return toast(memberError.message, 'error');
+  if (eventError || memberError || countriesError) return toast((eventError || memberError || countriesError).message, 'error');
   const eventOptions = (donationEvents || []).map(event => `<option value="${event.id}">${esc(event.name)}</option>`).join('');
   const memberOptions = (members || []).map(member => `<option value="${member.id}">${esc(member.name)}</option>`).join('');
 
@@ -2782,9 +3208,9 @@ async function showDonationModal() {
       <select id="mDonationEvent"><option value="">Select donation event</option>${eventOptions}</select></div>
     <div class="form-group"><label>Donor Name *</label><input id="mDonorName" type="text" placeholder="Full name"></div>
     <div class="form-group"><label>Phone</label><input id="mDonorPhone" type="tel" placeholder="Phone number"></div>
-    <div class="form-group"><label>City</label><input id="mDonorCity" type="text" placeholder="City"></div>
-    <div class="form-group"><label>State</label><input id="mDonorState" type="text" placeholder="State"></div>
-    <div class="form-group"><label>Country</label><input id="mDonorCountry" type="text" placeholder="Country"></div>
+    <div class="form-group"><label>Country</label><select id="mDonorCountry" data-ph="— Select Country —"><option value="">— Select Country —</option>${lookupOptsHTML(countries || [], 'country', '')}</select></div>
+    <div class="form-group"><label>State</label><select id="mDonorState" data-ph="— Select State —" disabled><option value="">— Select Country first —</option></select></div>
+    <div class="form-group"><label>City</label><select id="mDonorCity" data-ph="— Select City —" disabled><option value="">— Select State first —</option></select></div>
     <div class="form-group"><label>Nominee</label>
       <select id="mDonorNominee"><option value="">Select nominee</option>${memberOptions}</select></div>
     <div class="form-group"><label>Amount *</label><input id="mDonationAmount" type="number" min="0.01" step="0.01" placeholder="0.00"></div>
@@ -2814,7 +3240,41 @@ async function showDonationModal() {
       await supa.from('payment_reciept').delete().eq('id', receipt.id);
       return toast(error.message, 'error'), false;
     }
-    toast('Donation recorded', 'success'); await navigate(currentUser.role === 'user' ? 'user-fees' : 'admin-fees'); return true;
+    toast('Donation recorded', 'success'); await navigate(currentUser.role === 'user' ? 'user-donations' : 'admin-donations'); return true;
+  });
+  wireDonationLocationCascade();
+}
+
+function wireDonationLocationCascade() {
+  const countrySel = document.getElementById('mDonorCountry');
+  const stateSel = document.getElementById('mDonorState');
+  const citySel = document.getElementById('mDonorCity');
+  if (!countrySel || !stateSel || !citySel) return;
+  const block = (select, placeholder) => {
+    select.innerHTML = `<option value="">${placeholder}</option>`;
+    select.disabled = true;
+  };
+  const fill = (select, rows, nameCol) => {
+    select.innerHTML = `<option value="">${select.dataset.ph}</option>` + lookupOptsHTML(rows, nameCol, '');
+    select.disabled = false;
+  };
+  countrySel.addEventListener('change', async () => {
+    const countryId = countrySel.selectedOptions[0]?.dataset.id || '';
+    block(stateSel, countryId ? 'Loading…' : '— Select Country first —');
+    block(citySel, '— Select State first —');
+    if (!countryId) return;
+    try { fill(stateSel, await lookupRows('lookup_state', { country_id: countryId }, 'state'), 'state'); }
+    catch (err) { block(stateSel, '— Select Country first —'); toast(err.message, 'error'); }
+  });
+  stateSel.addEventListener('change', async () => {
+    const stateId = stateSel.selectedOptions[0]?.dataset.id || '';
+    block(citySel, stateId ? 'Loading…' : '— Select State first —');
+    if (!stateId) return;
+    try {
+      const districts = await lookupRows('lookup_district', { state_id: stateId }, 'district');
+      const cityRows = (await Promise.all(districts.map(district => lookupRows('lookup_city', { district_id: district.district_id }, 'city')))).flat();
+      fill(citySel, cityRows, 'city');
+    } catch (err) { block(citySel, '— Select State first —'); toast(err.message, 'error'); }
   });
 }
 
@@ -2851,11 +3311,11 @@ async function showRecordFeeForMember(actId, memberId, memberName, totalPaid = 0
     if (balance > 0 && amount > balance)           return toast(`Amount cannot exceed balance of ₹${balance.toFixed(2)}`, 'error'), false;
     if (!balance && target > 0 && amount > target) return toast(`Amount cannot exceed target of ₹${target.toFixed(2)}`, 'error'), false;
     if (!date)                                     return toast('Date is required', 'error'), false;
-    if (Number(act.type) !== 1)                    return toast('Fee records can only be created for fee events', 'error'), false;
+    if (![1, 4].includes(Number(act.type)))        return toast('Payments can only be recorded for fee or association events', 'error'), false;
     const { data: existingRecords, error: existingRecordError } = await supa.from('fee_records')
-      .select('id').eq('site_id', currentUser.site_id).eq('member_id', memberId).limit(1);
+      .select('id').eq('site_id', currentUser.site_id).eq('activity_id', actId).eq('member_id', memberId).limit(1);
     if (existingRecordError) return toast(existingRecordError.message, 'error'), false;
-    if (existingRecords?.length) return toast('This member already has a fee record for this site', 'error'), false;
+    if (existingRecords?.length) return toast('This member already has a payment record for this event', 'error'), false;
     const { data: receipt, error: receiptError } = await supa.from('payment_reciept')
       .insert({}).select('id').single();
     if (receiptError) return toast(receiptError.message, 'error'), false;
@@ -3084,6 +3544,155 @@ async function renderAdminReports() {
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 
+async function renderAdminAssociationReport() {
+  const el = document.getElementById('admin-association-report');
+  const siteId = currentUser.site_id;
+  if (!siteId) { el.innerHTML = noSiteMsg(); return; }
+  setLoading(el);
+  try {
+    const [{ data: activities, error: activitiesError }, { data: feeRecords, error: recordsError }] = await Promise.all([
+      supa.from('activities').select('id, name, target_amount').eq('site_id', siteId).eq('type', 4).order('name'),
+      supa.from('fee_records').select('activity_id, member_id, amount, target_amount').eq('site_id', siteId).not('member_id', 'is', null).limit(10000),
+    ]);
+    if (activitiesError || recordsError) throw activitiesError || recordsError;
+    const activityIds = (activities || []).map(activity => activity.id);
+    const { data: assignments, error: assignmentsError } = activityIds.length
+      ? await supa.from('activity_members').select('activity_id, member_id').in('activity_id', activityIds)
+      : { data: [], error: null };
+    if (assignmentsError) throw assignmentsError;
+    const memberIds = [...new Set((assignments || []).map(assignment => assignment.member_id))];
+    const { data: members, error: membersError } = memberIds.length
+      ? await supa.from('members').select('id, name').in('id', memberIds).order('name')
+      : { data: [], error: null };
+    if (membersError) throw membersError;
+    window._associationReportData = { activities: activities || [], assignments: assignments || [], members: members || [], feeRecords: feeRecords || [] };
+
+    el.innerHTML = `
+      <div class="panel-header"><div><h2>Association Report</h2><p>Event-wise member payment and outstanding balances</p></div><button class="btn btn-secondary" onclick="exportAssociationReportCSV()">⬇️ Export CSV</button></div>
+      <div class="card">
+        <div class="card-body">
+          <div class="filters">
+            <select id="associationReportEvent" onchange="refreshAssociationReport()">
+              <option value="">All Association Events</option>
+              ${(activities || []).map(activity => `<option value="${activity.id}">${esc(activity.name)}</option>`).join('')}
+            </select>
+            <select id="associationReportStatus" onchange="refreshAssociationReport()">
+              <option value="">All Status</option>
+              <option value="paid">Paid</option>
+              <option value="partial">Partial</option>
+              <option value="unpaid">Unpaid</option>
+            </select>
+          </div>
+          <div class="table-wrapper" id="associationReportTable">${buildAssociationReportTable('', '')}</div>
+        </div>
+      </div>`;
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+function getAssociationReportRows(activityId, statusFilter = '') {
+  const { activities, assignments, members, feeRecords } = window._associationReportData || { activities: [], assignments: [], members: [], feeRecords: [] };
+  const activityMap = Object.fromEntries(activities.map(activity => [activity.id, activity]));
+  const memberMap = Object.fromEntries(members.map(member => [member.id, member]));
+  return assignments
+    .filter(assignment => !activityId || assignment.activity_id === activityId)
+    .map(assignment => {
+      const activity = activityMap[assignment.activity_id];
+      const member = memberMap[assignment.member_id];
+      if (!activity || !member) return null;
+      const payments = feeRecords.filter(record => record.activity_id === activity.id && record.member_id === member.id);
+      const paid = payments.reduce((sum, record) => sum + parseFloat(record.amount || 0), 0);
+      const latest = payments[payments.length - 1];
+      const target = parseFloat(latest?.target_amount || activity.target_amount || 0);
+      const outstanding = Math.max(0, target - paid);
+      const status = outstanding === 0 && paid > 0 ? 'paid' : paid > 0 ? 'partial' : 'unpaid';
+      return { activity, member, target, paid, outstanding, status };
+    })
+    .filter(Boolean)
+    .filter(row => !statusFilter || row.status === statusFilter)
+    .sort((left, right) => left.activity.name.localeCompare(right.activity.name) || left.member.name.localeCompare(right.member.name));
+}
+
+function buildAssociationReportTable(activityId, statusFilter = '') {
+  const rows = getAssociationReportRows(activityId, statusFilter);
+  if (!rows.length) return emptyState('📋', 'No association members assigned', 'Assign members to an association event in Manage Events');
+  const totals = rows.reduce((sum, row) => ({
+    target: sum.target + row.target,
+    paid: sum.paid + row.paid,
+    outstanding: sum.outstanding + row.outstanding,
+  }), { target: 0, paid: 0, outstanding: 0 });
+  const memberTotals = getAssociationMemberTotals(rows);
+  return `<table style="min-width:760px">
+    <thead><tr><th>Event</th><th>Member</th><th style="text-align:right">Target Amount</th><th style="text-align:right">Total Paid</th><th style="text-align:right">Outstanding</th><th style="text-align:center">Status</th></tr></thead>
+    <tbody>${rows.map(row => `<tr>
+      <td>${esc(row.activity.name)}</td>
+      <td><strong>${esc(row.member.name)}</strong></td>
+      <td style="text-align:right">₹${row.target.toFixed(2)}</td>
+      <td class="text-green" style="text-align:right">₹${row.paid.toFixed(2)}</td>
+      <td style="text-align:right">${row.outstanding > 0 ? `<strong style="color:#ef4444">₹${row.outstanding.toFixed(2)}</strong>` : '₹0.00'}</td>
+      <td style="text-align:center">${row.status === 'paid' ? '<span class="badge badge-success">Paid</span>' : row.status === 'partial' ? '<span class="badge badge-warning">Partial</span>' : '<span class="badge badge-danger">Unpaid</span>'}</td>
+    </tr>`).join('')}</tbody>
+    <tfoot><tr><td colspan="6" style="height:10px;padding:0;border-top:2px solid var(--border)"></td></tr>
+    <tr style="font-weight:700;background:#f9fafb">
+      <td colspan="2">Final Total</td>
+      <td style="text-align:right">₹${totals.target.toFixed(2)}</td>
+      <td class="text-green" style="text-align:right">₹${totals.paid.toFixed(2)}</td>
+      <td style="text-align:right;color:${totals.outstanding > 0 ? '#ef4444' : 'inherit'}">₹${totals.outstanding.toFixed(2)}</td>
+      <td style="text-align:center">—</td>
+    </tr></tfoot>
+  </table>
+  ${!activityId ? `<div style="margin-top:24px;padding-top:14px;border-top:2px solid var(--border)">
+    <h3 style="font-size:14px;margin:0 0 10px">Member-wise Final Outstanding</h3>
+    <table style="min-width:520px">
+      <thead><tr><th>Member</th><th style="text-align:right">Total Target</th><th style="text-align:right">Total Paid</th><th style="text-align:right">Final Outstanding</th></tr></thead>
+      <tbody>${memberTotals.map(member => `<tr>
+        <td><strong>${esc(member.name)}</strong></td>
+        <td style="text-align:right">₹${member.target.toFixed(2)}</td>
+        <td class="text-green" style="text-align:right">₹${member.paid.toFixed(2)}</td>
+        <td style="text-align:right">${member.outstanding > 0 ? `<strong style="color:#ef4444">₹${member.outstanding.toFixed(2)}</strong>` : '₹0.00'}</td>
+      </tr>`).join('')}</tbody>
+    </table>
+  </div>` : ''}`;
+}
+
+function getAssociationMemberTotals(rows) {
+  return Object.values(rows.reduce((result, row) => {
+    const memberTotal = result[row.member.id] || { name: row.member.name, target: 0, paid: 0, outstanding: 0 };
+    memberTotal.target += row.target;
+    memberTotal.paid += row.paid;
+    memberTotal.outstanding += row.outstanding;
+    result[row.member.id] = memberTotal;
+    return result;
+  }, {})).sort((left, right) => right.outstanding - left.outstanding || left.name.localeCompare(right.name));
+}
+
+function refreshAssociationReport() {
+  const table = document.getElementById('associationReportTable');
+  if (table) table.innerHTML = buildAssociationReportTable(document.getElementById('associationReportEvent')?.value || '', document.getElementById('associationReportStatus')?.value || '');
+}
+
+function exportAssociationReportCSV() {
+  const activityId = document.getElementById('associationReportEvent')?.value || '';
+  const statusFilter = document.getElementById('associationReportStatus')?.value || '';
+  const rows = getAssociationReportRows(activityId, statusFilter);
+  if (!rows.length) return toast('No association report rows to export', 'warning');
+  const totals = rows.reduce((sum, row) => ({
+    target: sum.target + row.target,
+    paid: sum.paid + row.paid,
+    outstanding: sum.outstanding + row.outstanding,
+  }), { target: 0, paid: 0, outstanding: 0 });
+  const csvRows = rows.map(row => [
+    row.activity.name, row.member.name, row.target.toFixed(2), row.paid.toFixed(2), row.outstanding.toFixed(2),
+    row.status.charAt(0).toUpperCase() + row.status.slice(1),
+  ]);
+  csvRows.push(['Final Total', '', totals.target.toFixed(2), totals.paid.toFixed(2), totals.outstanding.toFixed(2), '']);
+  if (!activityId) {
+    const memberTotals = getAssociationMemberTotals(rows);
+    csvRows.push([], ['Member-wise Final Outstanding'], ['Member', 'Total Target', 'Total Paid', 'Final Outstanding']);
+    csvRows.push(...memberTotals.map(member => [member.name, member.target.toFixed(2), member.paid.toFixed(2), member.outstanding.toFixed(2)]));
+  }
+  downloadCSV(['Event', 'Member', 'Target Amount', 'Total Paid', 'Outstanding', 'Status'], csvRows, 'association-report.csv');
+}
+
 function buildReportTable(yearFilter, statusFilter) {
   const { feeActs, allMembers, feeRecords } = window._rptData || { feeActs: [], allMembers: [], feeRecords: [] };
 
@@ -3236,15 +3845,32 @@ async function renderUserDashboard() {
   setLoading(el);
   try {
     const userId = currentUser.id;
-    const [{ data: myFees }, { data: myDatas }, { data: site }] = await Promise.all([
+    const [{ data: myFees }, { data: myDatas }, { data: site }, { data: siteCommittee }, { data: states }] = await Promise.all([
       supa.from('fee_records').select('amount').eq('collected_by', userId),
       supa.from('data_records').select('id').eq('collected_by', userId),
-      currentUser.site_id ? supa.from('sites').select('name').eq('id', currentUser.site_id).single() : Promise.resolve({ data: null }),
+      currentUser.site_id ? supa.from('sites').select('name, state').eq('id', currentUser.site_id).single() : Promise.resolve({ data: null }),
+      currentUser.site_id ? supa.from('members').select('name, designation, profile_picture_path, dashboard_view_order').eq('site_id', currentUser.site_id).eq('is_community_member', true) : Promise.resolve({ data: [] }),
+      supa.from('lookup_state').select('state_id, state'),
     ]);
     const totalFees = (myFees || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+    const stateId = (states || []).find(state => state.state === site?.state)?.state_id;
+    const { data: stateCommittee } = stateId
+      ? await supa.from('board_committee_list').select('Name, Designation, profile_picture_path, list_order').eq('is_state_committee', true).eq('state_id', stateId).order('list_order')
+      : { data: [] };
+    const boardCards = (items, nameKey = 'name', designationKey = 'designation') => !items?.length
+      ? '<p style="color:var(--text-light);font-size:13px;text-align:center;padding:10px;width:100%">No board members listed</p>'
+      : items.sort((left, right) => (left.list_order ?? left.dashboard_view_order ?? 9999) - (right.list_order ?? right.dashboard_view_order ?? 9999)).map(item => {
+        const name = item[nameKey] || '—';
+        const designation = item[designationKey] || 'Committee Member';
+        const initials = name.split(' ').map(part => part[0]).join('').slice(0, 2).toUpperCase();
+        const photo = profilePicUrl(item.profile_picture_path);
+        return `<div class="committee-stamp-card"><div class="stamp-photo-frame">${photo ? `<img src="${esc(photo)}" alt="${esc(name)}" class="stamp-photo-img">` : `<div class="stamp-photo-placeholder">${initials}</div>`}</div><div class="member-name">${esc(name)}</div><div class="member-role">${esc(designation)}</div></div>`;
+      }).join('');
 
     el.innerHTML = `
       <div class="panel-header"><div><h2>My Dashboard</h2><p>${site?.name ? esc(site.name) : 'Not assigned to a site'}</p></div></div>
+      ${currentUser.site_id ? `<div class="committee-dashboard-section"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="font-size:15px;font-weight:600;color:var(--text);margin:0">State Committee Board</h3></div><div class="committee-stamp-grid">${boardCards(stateCommittee, 'Name', 'Designation')}</div></div>
+      <div class="committee-dashboard-section"><div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px"><h3 style="font-size:15px;font-weight:600;color:var(--text);margin:0">Mahallu Jamaath Committee Board</h3></div><div class="committee-stamp-grid">${boardCards(siteCommittee)}</div></div>` : ''}
       <div class="stats-grid">
         ${statCard('💰', 'si-green',  '₹' + totalFees.toFixed(2),  'Fees Collected')}
         ${statCard('📝', 'si-blue',   (myFees  || []).length,      'Fee Transactions')}
@@ -3755,7 +4381,7 @@ async function renderAdminExpenses() {
     const [{ data: categories }, { data: expenses }] = await Promise.all([
       supa.from('expense_categories').select('id, name').eq('site_id', siteId).order('name'),
       supa.from('expenses')
-        .select('id, amount, description, date, category:expense_categories!category_id(name), enteredBy:profiles!entered_by(name)')
+        .select('id, category_id, amount, description, date, category:expense_categories!category_id(name), enteredBy:profiles!entered_by(name)')
         .eq('site_id', siteId).order('date', { ascending: false }),
     ]);
 
@@ -3810,7 +4436,7 @@ async function renderAdminExpenses() {
                   <td><strong class="text-danger">₹${parseFloat(r.amount).toFixed(2)}</strong></td>
                   <td><strong>₹${(balMap[r.id] || 0).toFixed(2)}</strong></td>
                   <td>${r.enteredBy?.name ? esc(r.enteredBy.name) : '—'}</td>
-                  <td><button class="btn btn-danger btn-sm" onclick="deleteExpense('${r.id}')">🗑️</button></td>
+                  <td><div class="table-actions"><button class="btn btn-secondary btn-sm" onclick="showEditExpenseModal('${r.id}')">✏️ Edit</button><button class="btn btn-danger btn-sm" onclick="deleteExpense('${r.id}')">🗑️</button></div></td>
                 </tr>`).join('')}
             </tbody>
           </table>
@@ -3870,6 +4496,35 @@ async function showAddExpenseModal() {
       await navigate(currentUser.role === 'user' ? 'user-expenses' : 'admin-expenses');
       return true;
     });
+}
+
+async function showEditExpenseModal(expenseId) {
+  const [{ data: expense, error: expenseError }, { data: categories, error: categoriesError }] = await Promise.all([
+    supa.from('expenses').select('id, category_id, amount, date, description').eq('id', expenseId).single(),
+    supa.from('expense_categories').select('id, name').eq('site_id', currentUser.site_id).order('name'),
+  ]);
+  if (expenseError || categoriesError) return toast((expenseError || categoriesError).message, 'error');
+  if (!expense) return;
+  const catOpts = (categories || []).map(category => `<option value="${category.id}" ${category.id === expense.category_id ? 'selected' : ''}>${esc(category.name)}</option>`).join('');
+  showModal('Edit Expense', `
+    <div class="form-group"><label>Category</label>
+      <select id="mExpCat"><option value="">— Select Category —</option>${catOpts}</select>
+    </div>
+    <div class="form-group"><label>Amount *</label><input id="mExpAmt" type="number" min="0.01" step="0.01" value="${parseFloat(expense.amount || 0).toFixed(2)}"></div>
+    <div class="form-group"><label>Date *</label><input id="mExpDate" type="date" value="${expense.date || ''}"></div>
+    <div class="form-group"><label>Description</label><textarea id="mExpDesc" placeholder="Details...">${esc(expense.description || '')}</textarea></div>`,
+  async () => {
+    const amount = parseFloat(val('mExpAmt')), date = val('mExpDate');
+    if (!amount || amount <= 0) return toast('Valid amount is required', 'error'), false;
+    if (!date) return toast('Date is required', 'error'), false;
+    const { error } = await supa.from('expenses').update({
+      category_id: val('mExpCat') || null, amount, date, description: val('mExpDesc') || null,
+    }).eq('id', expenseId);
+    if (error) return toast(error.message, 'error'), false;
+    toast('Expense updated', 'success');
+    await navigate(currentUser.role === 'user' ? 'user-expenses' : 'admin-expenses');
+    return true;
+  });
 }
 
 function deleteExpenseCat(id) {

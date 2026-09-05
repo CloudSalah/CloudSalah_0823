@@ -2182,6 +2182,7 @@ async function renderAdminMembers() {
       .select('*')
       .eq('site_id', siteId)
       .eq('is_dependant', false)
+      .order('is_community_member', { ascending: false })
       .order('name');
     if (error) throw error;
 
@@ -2232,7 +2233,7 @@ function memberRecordFormHTML(m, guardianOpts = '', relationshipOpts = '', allow
     <div class="form-group form-group-checkbox">
       <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:600;user-select:none"><input type="checkbox" id="mMemberIsCommittee" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" onchange="toggleMemberRecordCommittee()" ${isCommittee ? 'checked' : ''}> Is Committee Member?</label>
     </div>
-    ${allowDependent ? `<div class="form-group form-group-checkbox">
+    ${allowDependent ? `<div id="memberDependentToggleGroup" class="form-group form-group-checkbox">
       <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:600;user-select:none"><input type="checkbox" id="mMemberIsDependent" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" onchange="toggleMemberDependent()"> Is Dependant</label>
     </div>
     <div id="memberDependentFields" style="display:none">
@@ -2269,9 +2270,16 @@ function toggleMemberRecordCommittee() {
   const og = document.getElementById('memberOthersGroup');
   const pg = document.getElementById('memberPhotoGroup');
   const dog = document.getElementById('memberDashboardOrderGroup');
+  const dependentToggleGroup = document.getElementById('memberDependentToggleGroup');
+  const dependentToggle = document.getElementById('mMemberIsDependent');
   if (dg) dg.style.display = checked ? '' : 'none';
   if (pg) pg.style.display = checked ? '' : 'none';
   if (dog) dog.style.display = checked ? '' : 'none';
+  if (dependentToggleGroup) dependentToggleGroup.style.display = checked ? 'none' : '';
+  if (checked && dependentToggle?.checked) {
+    dependentToggle.checked = false;
+    toggleMemberDependent();
+  }
   if (!checked) {
     const ds = document.getElementById('mMemberDesignation');
     if (ds) ds.value = '';

@@ -357,13 +357,34 @@ async function renderSALocations() {
   const el = document.getElementById('sa-locations');
   setLoading(el);
   try {
-    const [{ count: countryCount }, { count: stateCount }, { count: districtCount }, { count: cityCount }, { count: pinCount }] = await Promise.all([
+    const [{ count: countryCount }, { count: stateCount }, { count: districtCount }, { count: cityCount }, { count: pinCount }, countries, states, districts, cities, pinCodes] = await Promise.all([
       supa.from('lookup_country').select('*', { count: 'exact', head: true }),
       supa.from('lookup_state').select('*', { count: 'exact', head: true }),
       supa.from('lookup_district').select('*', { count: 'exact', head: true }),
       supa.from('lookup_city').select('*', { count: 'exact', head: true }),
       supa.from('lookup_pincode').select('*', { count: 'exact', head: true }),
+      lookupRows('lookup_country', {}, 'country'),
+      lookupRows('lookup_state', {}, 'state'),
+      lookupRows('lookup_district', {}, 'district'),
+      lookupRows('lookup_city', {}, 'city'),
+      lookupRows('lookup_pincode', {}, 'pincode'),
     ]);
+    const countryById = new Map((countries || []).map(row => [row.country_id, row.country]));
+    const stateById = new Map((states || []).map(row => [row.state_id, row.state]));
+    const districtById = new Map((districts || []).map(row => [row.district_id, row.district]));
+    const cityById = new Map((cities || []).map(row => [row.city_id, row.city]));
+    const districtStateById = new Map((districts || []).map(row => [row.district_id, row.state_id]));
+    const cityDistrictById = new Map((cities || []).map(row => [row.city_id, row.district_id]));
+    const locations = [
+      ...(countries || []).map(row => ({ type: 'country', id: row.country_id, value: row.country, parent: '—', order: row.order, countryId: row.country_id, stateId: '', districtId: '', cityId: '' })),
+      ...(states || []).map(row => ({ type: 'state', id: row.state_id, value: row.state, parent: countryById.get(row.country_id) || '—', order: row.order, countryId: row.country_id, stateId: row.state_id, districtId: '', cityId: '' })),
+      ...(districts || []).map(row => ({ type: 'district', id: row.district_id, value: row.district, parent: stateById.get(row.state_id) || '—', order: row.order, countryId: (states || []).find(state => state.state_id === row.state_id)?.country_id || '', stateId: row.state_id, districtId: row.district_id, cityId: '' })),
+      ...(cities || []).map(row => ({ type: 'city', id: row.city_id, value: row.city, parent: districtById.get(row.district_id) || '—', order: row.order, countryId: (states || []).find(state => state.state_id === districtStateById.get(row.district_id))?.country_id || '', stateId: districtStateById.get(row.district_id) || '', districtId: row.district_id, cityId: row.city_id })),
+      ...(pinCodes || []).map(row => ({ type: 'pincode', id: row.pincode_id, value: row.pincode, parent: cityById.get(row.city_id) || '—', order: row.order, countryId: (states || []).find(state => state.state_id === districtStateById.get(cityDistrictById.get(row.city_id)))?.country_id || '', stateId: districtStateById.get(cityDistrictById.get(row.city_id)) || '', districtId: cityDistrictById.get(row.city_id) || '', cityId: row.city_id })),
+    ];
+    window.locationSetupStates = states || [];
+    window.locationSetupDistricts = districts || [];
+    window.locationSetupCities = cities || [];
     el.innerHTML = `
       <div class="panel-header"><div><h2>Location Setup</h2><p>Manage country, state, district, city, and pin code lookup values</p></div><button class="btn btn-primary" onclick="showAddLocationModal()">+ Add Location</button></div>
       <div class="stats-grid">
@@ -372,8 +393,58 @@ async function renderSALocations() {
         ${statCard('📍', 'si-yellow', districtCount || 0, 'Districts')}
         ${statCard('🏙️', 'si-purple', cityCount || 0, 'Cities')}
         ${statCard('📮', 'si-green', pinCount || 0, 'Pin Codes')}
-      </div>`;
+      </div>
+      <div class="card"><div class="card-body">
+        <div class="filter-bar" style="display:flex;gap:12px;align-items:flex-end;flex-wrap:nowrap">
+          <div class="form-group" style="flex:1"><label>Country</label><select id="locationCountryFilter" onchange="updateLocationFilterOptions()"><option value="">All Countries</option>${(countries || []).map(row => `<option value="${row.country_id}">${esc(row.country)}</option>`).join('')}</select></div>
+          <div class="form-group" style="flex:1"><label>State</label><select id="locationStateFilter" onchange="updateLocationFilterOptions()"><option value="">All States</option></select></div>
+          <div class="form-group"><label>District</label><select id="locationDistrictFilter" onchange="updateLocationFilterOptions()"><option value="">All Districts</option></select></div>
+          <div class="form-group"><label>City</label><select id="locationCityFilter" onchange="filterLocationSetupTable()"><option value="">All Cities</option></select></div>
+        </div>
+      </div></div>
+      <div class="card"><div class="card-body table-wrapper">
+        ${!locations.length ? emptyState('📍', 'No locations yet', 'Add a location to build the site address lookup') : `<table>
+          <thead><tr><th>Type</th><th>Location</th><th>Parent</th><th>Order</th><th>Actions</th></tr></thead>
+          <tbody>${locations.map(item => `<tr data-location-type="${item.type}" data-country-id="${item.countryId}" data-state-id="${item.stateId}" data-district-id="${item.districtId}" data-city-id="${item.cityId}">
+            <td>${esc(locationTypeLabel(item.type))}</td><td><strong>${esc(item.value || '—')}</strong></td><td>${esc(item.parent)}</td><td>${item.order ?? '—'}</td>
+            <td><div class="table-actions"><button class="btn btn-secondary btn-sm" onclick="showEditLocationModal('${item.type}', ${item.id})">✏️ Edit</button><button class="btn btn-danger btn-sm" onclick="deleteLocation('${item.type}', ${item.id})">🗑️</button></div></td>
+          </tr>`).join('')}</tbody>
+        </table>`}
+      </div></div>`;
+    updateLocationFilterOptions();
   } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+function updateLocationFilterOptions() {
+  const countryId = val('locationCountryFilter');
+  const stateId = val('locationStateFilter');
+  const stateSelect = document.getElementById('locationStateFilter');
+  const districtSelect = document.getElementById('locationDistrictFilter');
+  const citySelect = document.getElementById('locationCityFilter');
+  if (!stateSelect || !districtSelect || !citySelect) return;
+  const states = window.locationSetupStates || [];
+  const districts = window.locationSetupDistricts || [];
+  const cities = window.locationSetupCities || [];
+  const currentState = stateSelect.value;
+  stateSelect.innerHTML = `<option value="">All States</option>${states.filter(row => !countryId || String(row.country_id) === countryId).map(row => `<option value="${row.state_id}">${esc(row.state)}</option>`).join('')}`;
+  stateSelect.value = states.some(row => String(row.state_id) === currentState && (!countryId || String(row.country_id) === countryId)) ? currentState : '';
+  const selectedStateId = stateSelect.value;
+  const currentDistrict = districtSelect.value;
+  districtSelect.innerHTML = `<option value="">All Districts</option>${districts.filter(row => !selectedStateId || String(row.state_id) === selectedStateId).map(row => `<option value="${row.district_id}">${esc(row.district)}</option>`).join('')}`;
+  districtSelect.value = districts.some(row => String(row.district_id) === currentDistrict && (!selectedStateId || String(row.state_id) === selectedStateId)) ? currentDistrict : '';
+  const districtId = districtSelect.value;
+  citySelect.innerHTML = `<option value="">All Cities</option>${cities.filter(row => !districtId || String(row.district_id) === districtId).map(row => `<option value="${row.city_id}">${esc(row.city)}</option>`).join('')}`;
+  filterLocationSetupTable();
+}
+
+function filterLocationSetupTable() {
+  const countryId = val('locationCountryFilter');
+  const stateId = val('locationStateFilter');
+  const districtId = val('locationDistrictFilter');
+  const cityId = val('locationCityFilter');
+  document.querySelectorAll('#sa-locations tbody tr[data-location-type]').forEach(row => {
+    row.hidden = Boolean((countryId && row.dataset.countryId !== countryId) || (stateId && row.dataset.stateId !== stateId) || (districtId && row.dataset.districtId !== districtId) || (cityId && row.dataset.cityId !== cityId));
+  });
 }
 
 async function renderSADesignations() {
@@ -386,8 +457,8 @@ async function renderSADesignations() {
       <div class="panel-header"><div><h2>Designation Setup</h2><p>Manage designations for association committee members</p></div><button class="btn btn-primary" onclick="showAddDesignationModal()">+ Add Designation</button></div>
       <div class="card"><div class="card-body table-wrapper">
         ${!(designations || []).length ? emptyState('🏷️', 'No designations yet', 'Add a designation to use it in association events') : `<table>
-          <thead><tr><th>Designation</th><th>Order</th></tr></thead>
-          <tbody>${designations.map(item => `<tr><td><strong>${esc(item.designation || '—')}</strong></td><td>${item.order ?? '—'}</td></tr>`).join('')}</tbody>
+          <thead><tr><th>Designation</th><th>Order</th><th>Actions</th></tr></thead>
+          <tbody>${designations.map(item => `<tr><td><strong>${esc(item.designation || '—')}</strong></td><td>${item.order ?? '—'}</td><td><div class="table-actions"><button class="btn btn-secondary btn-sm" onclick="showEditDesignationModal(${item.id})">✏️ Edit</button><button class="btn btn-danger btn-sm" onclick="deleteDesignation(${item.id})">🗑️</button></div></td></tr>`).join('')}</tbody>
         </table>`}
       </div></div>`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
@@ -410,6 +481,26 @@ function showAddDesignationModal() {
   });
 }
 
+async function showEditDesignationModal(id) {
+  const { data: designation, error } = await supa.from('lookup_designation').select('*').eq('id', id).single();
+  if (error) return toast(error.message, 'error');
+  showModal('Edit Designation', `<div class="form-group"><label>Designation *</label><input id="mDesignationName" type="text" value="${esc(designation.designation || '')}"></div><div class="form-group"><label>Display Order</label><input id="mDesignationOrder" type="number" min="1" step="1" value="${designation.order ?? ''}"></div>`, async () => {
+    const value = val('mDesignationName'), orderValue = val('mDesignationOrder');
+    if (!value) return toast('Designation is required', 'error'), false;
+    const { error: updateError } = await supa.from('lookup_designation').update({ designation: value, order: orderValue === '' ? null : parseInt(orderValue, 10) }).eq('id', id);
+    if (updateError) return toast(updateError.message, 'error'), false;
+    toast('Designation updated', 'success'); await navigate('sa-designations'); return true;
+  });
+}
+
+function deleteDesignation(id) {
+  confirmAction('Delete this designation?', async () => {
+    const { error } = await supa.from('lookup_designation').delete().eq('id', id);
+    if (error) return toast(error.message, 'error');
+    toast('Designation deleted', 'success'); await navigate('sa-designations');
+  });
+}
+
 async function renderSARelationships() {
   const el = document.getElementById('sa-relationships');
   setLoading(el);
@@ -420,8 +511,8 @@ async function renderSARelationships() {
       <div class="panel-header"><div><h2>Relationship Setup</h2><p>Manage guardian relationships for dependent members</p></div><button class="btn btn-primary" onclick="showAddRelationshipModal()">+ Add Relationship</button></div>
       <div class="card"><div class="card-body table-wrapper">
         ${!(relationships || []).length ? emptyState('👨‍👩‍👧‍👦', 'No relationships yet', 'Add a relationship to use it for dependents') : `<table>
-          <thead><tr><th>Relationship</th><th>Order</th></tr></thead>
-          <tbody>${relationships.map(item => `<tr><td><strong>${esc(item.relation || '—')}</strong></td><td>${item.order ?? '—'}</td></tr>`).join('')}</tbody>
+          <thead><tr><th>Relationship</th><th>Order</th><th>Actions</th></tr></thead>
+          <tbody>${relationships.map(item => `<tr><td><strong>${esc(item.relation || '—')}</strong></td><td>${item.order ?? '—'}</td><td><div class="table-actions"><button class="btn btn-secondary btn-sm" onclick="showEditRelationshipModal(${item.id})">✏️ Edit</button><button class="btn btn-danger btn-sm" onclick="deleteRelationship(${item.id})">🗑️</button></div></td></tr>`).join('')}</tbody>
         </table>`}
       </div></div>`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
@@ -441,6 +532,62 @@ function showAddRelationshipModal() {
     });
     if (error) return toast(error.message, 'error'), false;
     toast('Relationship added', 'success'); await navigate('sa-relationships'); return true;
+  });
+}
+
+async function showEditRelationshipModal(id) {
+  const { data: relationship, error } = await supa.from('lookup_relationship').select('*').eq('id', id).single();
+  if (error) return toast(error.message, 'error');
+  showModal('Edit Relationship', `<div class="form-group"><label>Relationship *</label><input id="mRelationshipName" type="text" value="${esc(relationship.relation || '')}"></div><div class="form-group"><label>Display Order</label><input id="mRelationshipOrder" type="number" min="1" step="1" value="${relationship.order ?? ''}"></div>`, async () => {
+    const value = val('mRelationshipName'), orderValue = val('mRelationshipOrder');
+    if (!value) return toast('Relationship is required', 'error'), false;
+    const { error: updateError } = await supa.from('lookup_relationship').update({ relation: value, order: orderValue === '' ? null : parseInt(orderValue, 10) }).eq('id', id);
+    if (updateError) return toast(updateError.message, 'error'), false;
+    toast('Relationship updated', 'success'); await navigate('sa-relationships'); return true;
+  });
+}
+
+function deleteRelationship(id) {
+  confirmAction('Delete this relationship?', async () => {
+    const { error } = await supa.from('lookup_relationship').delete().eq('id', id);
+    if (error) return toast(error.message, 'error');
+    toast('Relationship deleted', 'success'); await navigate('sa-relationships');
+  });
+}
+
+function locationSetupConfig(type) {
+  return { country: ['lookup_country', 'country', 'country_id'], state: ['lookup_state', 'state', 'state_id'], district: ['lookup_district', 'district', 'district_id'], city: ['lookup_city', 'city', 'city_id'], pincode: ['lookup_pincode', 'pincode', 'pincode_id'] }[type];
+}
+
+function locationTypeLabel(type) {
+  return { country: 'Country', state: 'State', district: 'District', city: 'City', pincode: 'Pin Code' }[type] || type;
+}
+
+async function showEditLocationModal(type, id) {
+  const config = locationSetupConfig(type);
+  if (!config) return;
+  const [table, nameCol, idCol] = config;
+  const { data: location, error } = await supa.from(table).select('*').eq(idCol, id).single();
+  if (error) return toast(error.message, 'error');
+  const label = locationTypeLabel(type);
+  showModal(`Edit ${label}`, `<div class="form-group"><label>${label} *</label><input id="mEditLocationValue" type="text" value="${esc(location[nameCol] || '')}"></div><div class="form-group"><label>Display Order</label><input id="mEditLocationOrder" type="number" min="1" step="1" value="${location.order ?? ''}"></div>`, async () => {
+    const value = val('mEditLocationValue'), orderValue = val('mEditLocationOrder');
+    if (!value) return toast(`${label} is required`, 'error'), false;
+    const { error: updateError } = await supa.from(table).update({ [nameCol]: value, order: orderValue === '' ? null : parseInt(orderValue, 10) }).eq(idCol, id);
+    if (updateError) return toast(updateError.message, 'error'), false;
+    toast(`${label} updated`, 'success'); await navigate('sa-locations'); return true;
+  });
+}
+
+function deleteLocation(type, id) {
+  const config = locationSetupConfig(type);
+  if (!config) return;
+  const [table, , idCol] = config;
+  const label = locationTypeLabel(type);
+  confirmAction(`Delete this ${label.toLowerCase()}?`, async () => {
+    const { error } = await supa.from(table).delete().eq(idCol, id);
+    if (error) return toast(error.message, 'error');
+    toast(`${label} deleted`, 'success'); await navigate('sa-locations');
   });
 }
 

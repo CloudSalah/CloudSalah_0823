@@ -113,6 +113,20 @@ create table if not exists public.fee_records (
   created_at    timestamptz   default now()
 );
 
+-- Audit records may contain multiple entries for one fee record (insert, update, approval).
+-- Keep the source fee id in `id`, but use a separate generated key for each audit entry.
+do $$
+begin
+  if to_regclass('public.au_fee_records') is not null then
+    alter table public.au_fee_records add column if not exists audit_id uuid default gen_random_uuid();
+    update public.au_fee_records set audit_id = gen_random_uuid() where audit_id is null;
+    alter table public.au_fee_records alter column audit_id set default gen_random_uuid();
+    alter table public.au_fee_records alter column audit_id set not null;
+    alter table public.au_fee_records drop constraint if exists au_fee_records_pkey;
+    alter table public.au_fee_records add constraint au_fee_records_pkey primary key (audit_id);
+  end if;
+end $$;
+
 -- ========================
 -- DATA RECORDS
 -- ========================

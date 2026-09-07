@@ -103,6 +103,7 @@ async function renderPanel(id) {
     'admin-users':      renderAdminUsers,
     'admin-members':    renderAdminMembers,
     'admin-dependents': renderAdminDependents,
+    'admin-approvals':  renderAdminApprovals,
     'admin-activities': renderAdminActivities,
     'admin-fees':       renderAdminFees,
     'admin-donations':  renderAdminDonations,
@@ -163,6 +164,7 @@ function renderSidebar() {
       <div class="nav-item" data-panel="admin-users"      onclick="navigate('admin-users')"><span class="nav-icon">👥</span>Profile Users</div>
       <div class="nav-item" data-panel="admin-members"    onclick="navigate('admin-members')"><span class="nav-icon">👨‍👩‍👧‍👦</span>Members</div>
       <div class="nav-item" data-panel="admin-dependents"  onclick="navigate('admin-dependents')"><span class="nav-icon">👶</span>Dependents</div>
+      <div class="nav-item" data-panel="admin-approvals"   onclick="navigate('admin-approvals')"><span class="nav-icon">✅</span>Approvals</div>
       <div class="nav-item" data-panel="admin-activities" onclick="navigate('admin-activities')"><span class="nav-icon">📋</span>Manage Events</div>
       <div class="nav-section">Finance</div>
       <div class="nav-item" data-panel="admin-fees"       onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>
@@ -3191,6 +3193,66 @@ function deleteActivity(actId) {
 }
 
 // ============================================================
+//  SITE ADMIN — APPROVALS
+// ============================================================
+
+async function renderAdminApprovals() {
+  const el = document.getElementById('admin-approvals');
+  const siteId = currentUser.site_id;
+  if (!siteId) { el.innerHTML = noSiteMsg(); return; }
+  const activeFilters = {
+    eventType: document.getElementById('approvalEventTypeF')?.value || '', event: document.getElementById('approvalEventF')?.value || '',
+    recordType: document.getElementById('approvalRecordTypeF')?.value || '', collector: document.getElementById('approvalCollectorF')?.value || '', status: document.getElementById('approvalStatusF')?.value || 'pending',
+  };
+  setLoading(el);
+  try {
+    const [{ data: activities, error: activityError }, { data: eventTypeRows, error: eventTypeError }, { data: fees, error: feeError }, { data: donations, error: donationError }, { data: expenses, error: expenseError }, { data: revenues, error: revenueError }] = await Promise.all([
+      supa.from('activities').select('id, name, type, target_amount').eq('site_id', siteId).order('name'),
+      supa.from('event_types').select('id, type').order('id'),
+      supa.from('fee_records').select('id, activity_id, member_id, amount, target_amount, date, collected_by, is_approved, approved_by').eq('site_id', siteId).order('date', { ascending: false }),
+      supa.from('donation_records').select('id, event_id, donor_name, amount, collection_date, collected_by, is_approved, approved_by').order('collection_date', { ascending: false }).limit(10000),
+      supa.from('expenses').select('id, category_id, amount, description, date, entered_by, is_approved, approved_by, category:expense_categories!category_id(name)').eq('site_id', siteId).order('date', { ascending: false }),
+      supa.from('revenues').select('id, category_id, amount, description, date, entered_by, is_approved, approved_by, category:revenue_categories!category_id(name)').eq('site_id', siteId).order('date', { ascending: false }),
+    ]);
+    if (activityError || eventTypeError || feeError || donationError || expenseError || revenueError) throw activityError || eventTypeError || feeError || donationError || expenseError || revenueError;
+    const activityMap = Object.fromEntries((activities || []).map(activity => [activity.id, activity]));
+    const eventTypeMap = Object.fromEntries((eventTypeRows || []).map(row => [String(row.id), row.type]));
+    const siteDonations = (donations || []).filter(donation => activityMap[donation.event_id]);
+    const memberIds = [...new Set((fees || []).map(record => record.member_id).filter(Boolean))];
+    const collectorIds = [...new Set([...(fees || []).map(record => record.collected_by), ...siteDonations.map(record => record.collected_by), ...(expenses || []).map(record => record.entered_by), ...(revenues || []).map(record => record.entered_by)].filter(Boolean))];
+    const approverIds = [...new Set([...(fees || []).map(record => record.approved_by), ...siteDonations.map(record => record.approved_by), ...(expenses || []).map(record => record.approved_by), ...(revenues || []).map(record => record.approved_by)].filter(Boolean))];
+    const [{ data: members }, { data: collectors }, { data: approvers }] = await Promise.all([
+      memberIds.length ? supa.from('members').select('id, name').in('id', memberIds) : Promise.resolve({ data: [] }),
+      collectorIds.length ? supa.from('profiles').select('id, name').in('id', collectorIds) : Promise.resolve({ data: [] }),
+      approverIds.length ? supa.from('profiles').select('id, name').in('id', approverIds) : Promise.resolve({ data: [] }),
+    ]);
+    const memberMap = Object.fromEntries((members || []).map(member => [member.id, member.name]));
+    const collectorMap = Object.fromEntries((collectors || []).map(collector => [collector.id, collector.name]));
+    const approverMap = Object.fromEntries((approvers || []).map(approver => [approver.id, approver.name]));
+    const rows = [
+      ...(fees || []).map(record => { const activity = activityMap[record.activity_id]; const target = parseFloat(record.target_amount || activity?.target_amount || 0); const amount = parseFloat(record.amount || 0); return { source: 'fee_records', sourceLabel: 'Fee Payment', id: record.id, eventId: record.activity_id, event: activity?.name || '—', eventType: eventTypeMap[String(activity?.type)] || String(activity?.type ?? ''), description: memberMap[record.member_id] || '—', amount, date: record.date, paymentStatus: target > 0 && amount < target ? 'partial' : 'full', recordType: target > 0 && amount < target ? 'partial' : 'full', collectorId: record.collected_by || '', collector: collectorMap[record.collected_by] || '—', approved: record.is_approved === true, approvedBy: approverMap[record.approved_by] || '' }; }),
+      ...siteDonations.map(record => { const activity = activityMap[record.event_id]; return { source: 'donation_records', sourceLabel: 'Donation', id: record.id, eventId: record.event_id, event: activity?.name || '—', eventType: eventTypeMap[String(activity?.type)] || String(activity?.type ?? ''), description: record.donor_name || '—', amount: parseFloat(record.amount || 0), date: record.collection_date, paymentStatus: 'full', recordType: 'full', collectorId: record.collected_by || '', collector: collectorMap[record.collected_by] || '—', approved: record.is_approved === true, approvedBy: approverMap[record.approved_by] || '' }; }),
+      ...(expenses || []).map(record => ({ source: 'expenses', sourceLabel: 'Expense', id: record.id, eventId: '', event: '—', eventType: '', description: record.description || record.category?.name || '—', amount: parseFloat(record.amount || 0), date: record.date, paymentStatus: 'expense', recordType: 'expense', collectorId: record.entered_by || '', collector: collectorMap[record.entered_by] || '—', approved: record.is_approved === true, approvedBy: approverMap[record.approved_by] || '' })),
+      ...(revenues || []).map(record => ({ source: 'revenues', sourceLabel: 'Revenue', id: record.id, eventId: '', event: '—', eventType: '', description: record.description || record.category?.name || '—', amount: parseFloat(record.amount || 0), date: record.date, paymentStatus: 'revenue', recordType: 'revenue', collectorId: record.entered_by || '', collector: collectorMap[record.entered_by] || '—', approved: record.is_approved === true, approvedBy: approverMap[record.approved_by] || '' })),
+    ];
+    window._approvalRows = rows;
+    const eventTypes = [...new Set(rows.map(row => row.eventType).filter(Boolean))];
+    const eventOptions = (activities || []).map(activity => `<option value="${activity.id}" ${activeFilters.event === activity.id ? 'selected' : ''}>${esc(activity.name)}</option>`).join('');
+    const collectorOptions = collectorIds.map(id => `<option value="${id}" ${activeFilters.collector === id ? 'selected' : ''}>${esc(collectorMap[id] || id)}</option>`).join('');
+    el.innerHTML = `<div class="panel-header"><div><h2>Approvals</h2><p>Review and approve fees, donations, expenses, and revenues for your site</p></div></div><div class="stats-grid">${statCard('⏳', 'si-yellow', rows.filter(row => !row.approved).length, 'Pending')}${statCard('✅', 'si-green', rows.filter(row => row.approved).length, 'Approved')}${statCard('📋', 'si-blue', rows.length, 'Total Records')}</div><div class="card"><div class="card-body"><div class="filters"><select id="approvalEventTypeF" onchange="filterApprovalTable()"><option value="">All Event Types</option>${eventTypes.map(type => `<option value="${esc(type)}" ${activeFilters.eventType === type ? 'selected' : ''}>${esc(type)}</option>`).join('')}</select><select id="approvalEventF" onchange="filterApprovalTable()"><option value="">All Events</option>${eventOptions}</select><select id="approvalRecordTypeF" onchange="filterApprovalTable()"><option value="">All Record Types</option><option value="partial" ${activeFilters.recordType === 'partial' ? 'selected' : ''}>Partial Paid</option><option value="full" ${activeFilters.recordType === 'full' ? 'selected' : ''}>Full Paid</option><option value="expense" ${activeFilters.recordType === 'expense' ? 'selected' : ''}>Expenses</option><option value="revenue" ${activeFilters.recordType === 'revenue' ? 'selected' : ''}>Revenue</option></select><select id="approvalCollectorF" onchange="filterApprovalTable()"><option value="">All Collected By</option>${collectorOptions}</select><select id="approvalStatusF" onchange="filterApprovalTable()"><option value="pending" ${activeFilters.status === 'pending' ? 'selected' : ''}>Pending Approvals</option><option value="approved" ${activeFilters.status === 'approved' ? 'selected' : ''}>Approved</option><option value="all" ${activeFilters.status === 'all' ? 'selected' : ''}>All Status</option></select><button class="btn btn-success" onclick="approveSelectedRecords()">✓ Approve Selected</button></div></div></div><div class="card"><div class="card-body table-wrapper"><table id="approvalTable"><thead><tr><th><input type="checkbox" id="approvalSelectAll" onchange="toggleAllApprovalRows(this)"></th><th>Date</th><th>Type</th><th>Event Type</th><th>Event</th><th>Description</th><th>Amount</th><th>Collected By</th><th>Status</th><th>Approved By</th></tr></thead><tbody>${!rows.length ? `<tr><td colspan="10">${emptyState('✅', 'No approval records found', 'Try changing the filters')}</td></tr>` : rows.map(approvalRowHTML).join('')}</tbody></table></div></div>`;
+    document.getElementById('approvalEventTypeF')?.parentElement.classList.add('approval-filters');
+    filterApprovalTable();
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+function approvalRowHTML(row) { return `<tr data-source="${row.source}" data-record-id="${row.id}" data-event-type="${esc(row.eventType)}" data-event-id="${row.eventId}" data-record-type="${row.recordType}" data-collector-id="${row.collectorId}" data-approved="${row.approved}"><td>${row.approved ? '' : '<input type="checkbox" class="approval-check">'}</td><td>${row.date ? fmtDate(row.date) : '—'}</td><td>${esc(row.sourceLabel)}</td><td>${esc(row.eventType || '—')}</td><td>${esc(row.event)}</td><td>${esc(row.description)}</td><td><strong>₹${row.amount.toFixed(2)}</strong></td><td>${esc(row.collector)}</td><td>${row.approved ? '<span class="badge badge-success">Approved</span>' : '<span class="badge badge-warning">Pending</span>'}</td><td>${row.approvedBy ? esc(row.approvedBy) : ''}</td></tr>`; }
+function filterApprovalTable() { const eventType = val('approvalEventTypeF'), eventId = val('approvalEventF'), recordType = val('approvalRecordTypeF'), collectorId = val('approvalCollectorF'), status = val('approvalStatusF'); document.querySelectorAll('#approvalTable tbody tr[data-source]').forEach(row => { row.hidden = Boolean((eventType && row.dataset.eventType !== eventType) || (eventId && row.dataset.eventId !== eventId) || (recordType && row.dataset.recordType !== recordType) || (collectorId && row.dataset.collectorId !== collectorId) || (status === 'pending' && row.dataset.approved === 'true') || (status === 'approved' && row.dataset.approved !== 'true')); }); const selectAll = document.getElementById('approvalSelectAll'); if (selectAll) selectAll.checked = false; }
+function toggleAllApprovalRows(checkbox) { document.querySelectorAll('#approvalTable tbody tr[data-source]:not([hidden]) .approval-check').forEach(input => { input.checked = checkbox.checked; }); }
+async function approveApprovalRecord(source, id) { await approveApprovalRecords([{ source, id }]); }
+async function approveSelectedRecords() { const records = [...document.querySelectorAll('#approvalTable tbody tr[data-source]:not([hidden]) .approval-check:checked')].map(input => { const row = input.closest('tr'); return { source: row.dataset.source, id: row.dataset.recordId }; }); if (!records.length) return toast('Select at least one pending record', 'warning'); await approveApprovalRecords(records); }
+async function approveApprovalRecords(records) { const grouped = records.reduce((groups, record) => { (groups[record.source] ||= []).push(record.id); return groups; }, {}); const results = await Promise.all(Object.entries(grouped).map(([source, ids]) => supa.from(source).update({ is_approved: true, approved_by: currentUser.id }).in('id', ids))); const error = results.find(result => result.error)?.error; if (error) return toast(error.message, 'error'); toast(`${records.length} record${records.length === 1 ? '' : 's'} approved`, 'success'); await navigate('admin-approvals'); }
+
+// ============================================================
 //  SITE ADMIN — FEE RECORDS
 // ============================================================
 
@@ -4950,13 +5012,13 @@ async function loadBalanceSheet() {
   try {
     const [{ data: feeRecs }, { data: expenses }, { data: donationEvents }, { data: donationRecords }, { data: revenues }, { data: eventTypes }] = await Promise.all([
       supa.from('fee_records').select('amount, date, activity:activities!activity_id(name,type)')
-        .eq('site_id', siteId).gte('date', from).lte('date', to),
+        .eq('site_id', siteId).eq('is_approved', true).gte('date', from).lte('date', to),
       supa.from('expenses').select('amount, date, description, category:expense_categories!category_id(name)')
-        .eq('site_id', siteId).gte('date', from).lte('date', to),
+        .eq('site_id', siteId).eq('is_approved', true).gte('date', from).lte('date', to),
       supa.from('activities').select('id, name, type').eq('site_id', siteId).eq('type', 3),
-      supa.from('donation_records').select('event_id, amount, collection_date').gte('collection_date', from).lte('collection_date', to),
+      supa.from('donation_records').select('event_id, amount, collection_date').eq('is_approved', true).gte('collection_date', from).lte('collection_date', to),
       supa.from('revenues').select('amount, date, category:revenue_categories!category_id(name)')
-        .eq('site_id', siteId).gte('date', from).lte('date', to),
+        .eq('site_id', siteId).eq('is_approved', true).gte('date', from).lte('date', to),
       supa.from('event_types').select('id, Exclude_from_balance_sheet'),
     ]);
 

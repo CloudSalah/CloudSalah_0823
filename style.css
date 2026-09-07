@@ -626,6 +626,10 @@ tbody tr:hover { background: #fafbfc; }
 .filters input:focus, .filters select:focus { border-color: var(--primary); }
 .filter-grow { flex: 1; min-width: 160px; }
 
+.approval-filters { flex-wrap: nowrap; align-items: center; gap: 6px; margin-bottom: 0; }
+.approval-filters select { min-width: 0; flex: 1 1 0; padding: 7px 8px; font-size: 12px; }
+.approval-filters .btn { position: fixed; right: 24px; bottom: 100px; z-index: 1000; padding: 11px 16px; font-size: 13px; box-shadow: 0 4px 14px rgba(0,0,0,.2); }
+
 /* ====================================================
    CHECKBOX GROUP
    ==================================================== */

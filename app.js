@@ -9,6 +9,56 @@ const supa = createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 let currentUser = null;
 let eventTypesCache = null;
 
+const SITE_ADMIN_MODULES = [
+  { key: 'admin-dashboard', label: 'Dashboard', icon: '📊', group: 'Overview' },
+  { key: 'admin-users', label: 'Profile Users', icon: '👥', group: 'Management' },
+  { key: 'admin-members', label: 'Members', icon: '👨‍👩‍👧‍👦', group: 'Management' },
+  { key: 'admin-dependents', label: 'Dependents', icon: '👶', group: 'Management' },
+  { key: 'admin-approvals', label: 'Approvals', icon: '✅', group: 'Management' },
+  { key: 'admin-activities', label: 'Manage Events', icon: '📋', group: 'Management' },
+  { key: 'admin-fees', label: 'Payment Collections', icon: '💰', group: 'Finance' },
+  { key: 'admin-donations', label: 'Donations', icon: '🤲', group: 'Finance' },
+  { key: 'admin-expenses', label: 'Expenses', icon: '💸', group: 'Finance' },
+  { key: 'admin-revenues', label: 'Revenue', icon: '📈', group: 'Finance' },
+  { key: 'admin-data', label: 'Data Records', icon: '📁', group: 'Collections' },
+  { key: 'admin-reports', label: 'Collection Report', icon: '📈', group: 'Reports' },
+  { key: 'admin-data-report', label: 'Data Collection Report', icon: '📁', group: 'Reports' },
+  { key: 'admin-association-report', label: 'Association Report', icon: '📋', group: 'Reports' },
+  { key: 'admin-expense-report', label: 'Expense Report', icon: '📊', group: 'Reports' },
+  { key: 'admin-balance-sheet', label: 'Balance Sheet', icon: '⚖️', group: 'Reports' },
+];
+
+const RANGE_ADMIN_MODULES = [
+  { key: 'rangeadmin-dashboard', label: 'Dashboard', icon: '📊', group: 'Overview' },
+  { key: 'ra-sites', label: 'Sites', icon: '🏘️', group: 'Management' },
+  { key: 'ra-admins', label: 'Site Admins', icon: '👤', group: 'Management' },
+];
+
+function roleHasExplicitModulePermissions(roleData, modules) {
+  const permissions = roleData?.module_permissions || {};
+  return modules.some(module => Object.prototype.hasOwnProperty.call(permissions, module.key));
+}
+
+function canAccessPanel(panelId) {
+  if (!currentUser || currentUser.role === 'superadmin') return true;
+  const roleData = currentUser.roleData;
+  const modules = currentUser.role === 'rangeadmin' ? RANGE_ADMIN_MODULES : SITE_ADMIN_MODULES;
+  if (currentUser.role === 'siteadmin' || currentUser.role === 'rangeadmin') {
+    if (!roleData || !roleHasExplicitModulePermissions(roleData, modules)) return true;
+    return roleData.module_permissions?.[panelId] === true;
+  }
+  return true;
+}
+
+function renderAdminModuleNav(modules) {
+  let lastGroup = '';
+  return modules.filter(module => canAccessPanel(module.key)).map(module => {
+    const section = module.group !== lastGroup ? `<div class="nav-section">${module.group}</div>` : '';
+    lastGroup = module.group;
+    return `${section}<div class="nav-item" data-panel="${module.key}" onclick="navigate('${module.key}')"><span class="nav-icon">${module.icon}</span>${module.label}</div>`;
+  }).join('');
+}
+
 async function getEventTypeId(type) {
   if (!eventTypesCache) {
     const { data, error } = await supa.from('event_types').select('id, type').order('id');
@@ -78,6 +128,10 @@ function showPanel(id) {
 }
 
 async function navigate(panelId) {
+  if (!canAccessPanel(panelId)) {
+    toast('This module is not enabled for your role', 'error');
+    return;
+  }
   showPanel(panelId);
   await renderPanel(panelId);
 }
@@ -158,36 +212,9 @@ function renderSidebar() {
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-panel="sa-reports" onclick="navigate('sa-reports')"><span class="nav-icon">📈</span>Reports</div>`;
   } else if (role === 'siteadmin') {
-    nav.innerHTML = `
-      <div class="nav-section">Overview</div>
-      <div class="nav-item" data-panel="admin-dashboard"  onclick="navigate('admin-dashboard')"><span class="nav-icon">📊</span>Dashboard</div>
-      <div class="nav-section">Management</div>
-      <div class="nav-item" data-panel="admin-users"      onclick="navigate('admin-users')"><span class="nav-icon">👥</span>Profile Users</div>
-      <div class="nav-item" data-panel="admin-members"    onclick="navigate('admin-members')"><span class="nav-icon">👨‍👩‍👧‍👦</span>Members</div>
-      <div class="nav-item" data-panel="admin-dependents"  onclick="navigate('admin-dependents')"><span class="nav-icon">👶</span>Dependents</div>
-      <div class="nav-item" data-panel="admin-approvals"   onclick="navigate('admin-approvals')"><span class="nav-icon">✅</span>Approvals</div>
-      <div class="nav-item" data-panel="admin-activities" onclick="navigate('admin-activities')"><span class="nav-icon">📋</span>Manage Events</div>
-      <div class="nav-section">Finance</div>
-      <div class="nav-item" data-panel="admin-fees"       onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>
-      <div class="nav-item" data-panel="admin-donations"  onclick="navigate('admin-donations')"><span class="nav-icon">🤲</span>Donations</div>
-      <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
-      <div class="nav-item" data-panel="admin-revenues"   onclick="navigate('admin-revenues')"><span class="nav-icon">📈</span>Revenue</div>
-      <div class="nav-section">Collections</div>
-      <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>
-      <div class="nav-section">Reports</div>
-      <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
-      <div class="nav-item" data-panel="admin-data-report" onclick="navigate('admin-data-report')"><span class="nav-icon">📁</span>Data Collection Report</div>
-      <div class="nav-item" data-panel="admin-association-report" onclick="navigate('admin-association-report')"><span class="nav-icon">📋</span>Association Report</div>
-      <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
-      <div class="nav-item" data-panel="admin-balance-sheet"  onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>
-      `;
+    nav.innerHTML = renderAdminModuleNav(SITE_ADMIN_MODULES);
   } else if (role === 'rangeadmin') {
-    nav.innerHTML = `
-      <div class="nav-section">Overview</div>
-      <div class="nav-item" data-panel="rangeadmin-dashboard" onclick="navigate('rangeadmin-dashboard')"><span class="nav-icon">📊</span>Dashboard</div>
-      <div class="nav-section">Management</div>
-      <div class="nav-item" data-panel="ra-sites"  onclick="navigate('ra-sites')"><span class="nav-icon">🏘️</span>Sites</div>
-      <div class="nav-item" data-panel="ra-admins" onclick="navigate('ra-admins')"><span class="nav-icon">👤</span>Site Admins</div>`;
+    nav.innerHTML = renderAdminModuleNav(RANGE_ADMIN_MODULES);
   } else {
     // When no role is assigned show everything; when a role exists enforce its permissions
     const rd = currentUser.roleData;
@@ -1151,8 +1178,13 @@ async function siteSelectOpts(selectedId) {
   return (sites || []).map(s => `<option value="${s.id}" ${s.id === selectedId ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
 }
 
+async function adminRoleOpts(scope, selectedId = '') {
+  const { data: roles } = await supa.from('roles').select('id, name, scope').order('name');
+  return roleOptions(roles, scope, selectedId);
+}
+
 async function showAddAdminModal() {
-  const opts = await siteSelectOpts('');
+  const [opts, roleOpts] = await Promise.all([siteSelectOpts(''), adminRoleOpts('siteadmin')]);
   showModal('Add Site Admin', `
     <div class="form-group"><label>Full Name *</label><input id="mName"     type="text"     placeholder="Admin's full name"></div>
     <div class="form-group"><label>User Name *</label>     <input id="mEmail"    type="text"    placeholder="user name"></div>
@@ -1160,14 +1192,17 @@ async function showAddAdminModal() {
     <div class="form-group"><label>Password *</label>  <input id="mPassword" type="password" placeholder="Min 6 characters"></div>
     <div class="form-group"><label>Assign to Site</label>
       <select id="mSiteId"><option value="">— No Site —</option>${opts}</select>
+    </div>
+    <div class="form-group"><label>Permission Role</label>
+      <select id="mRoleId"><option value="">— Full access (no role) —</option>${roleOpts}</select>
     </div>`,
   async () => {
-    const name = val('mName'), email = val('mEmail'), password = val('mPassword'), siteId = val('mSiteId');
+    const name = val('mName'), email = val('mEmail'), password = val('mPassword'), siteId = val('mSiteId'), roleId = val('mRoleId');
     if (!name || !email || !password) return toast('Name, email and password are required', 'error'), false;
     if (password.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
     const password_hash = await hashPw(password);
     const { data: newAdmin, error } = await supa.from('profiles')
-      .insert({ name, username: email.toLowerCase(), password_hash, phone: val('mPhone') || null, role: 'siteadmin', site_id: siteId || null })
+      .insert({ name, username: email.toLowerCase(), password_hash, phone: val('mPhone') || null, role: 'siteadmin', site_id: siteId || null, role_id: roleId || null })
       .select().single();
     if (error) return toast(error.message, 'error'), false;
     if (siteId) await assignAdminToSite(newAdmin.id, siteId);
@@ -1178,7 +1213,7 @@ async function showAddAdminModal() {
 async function showEditAdminModal(userId) {
   const { data: u } = await supa.from('profiles').select('*').eq('id', userId).single();
   if (!u) return;
-  const opts = await siteSelectOpts(u.site_id || '');
+  const [opts, roleOpts] = await Promise.all([siteSelectOpts(u.site_id || ''), adminRoleOpts('siteadmin', u.role_id || '')]);
   showModal('Edit Site Admin', `
     <div class="form-group"><label>Full Name *</label><input id="mName"     type="text"     value="${esc(u.name)}"></div>
     <div class="form-group"><label>User Name *</label>     <input id="mEmail"    type="text"    value="${esc(u.username)}"></div>
@@ -1187,12 +1222,15 @@ async function showEditAdminModal(userId) {
       <input id="mPassword" type="password" placeholder="New password"></div>
     <div class="form-group"><label>Assigned Site</label>
       <select id="mSiteId"><option value="">— No Site —</option>${opts}</select>
+    </div>
+    <div class="form-group"><label>Permission Role</label>
+      <select id="mRoleId"><option value="">— Full access (no role) —</option>${roleOpts}</select>
     </div>`,
   async () => {
-    const name = val('mName'), email = val('mEmail'), siteId = val('mSiteId'), pw = val('mPassword');
+    const name = val('mName'), email = val('mEmail'), siteId = val('mSiteId'), roleId = val('mRoleId'), pw = val('mPassword');
     if (!name || !email) return toast('Name and user name are required', 'error'), false;
     if (pw && pw.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
-    const updates = { name, username: email.toLowerCase(), phone: val('mPhone') || null, site_id: siteId || null };
+    const updates = { name, username: email.toLowerCase(), phone: val('mPhone') || null, site_id: siteId || null, role_id: roleId || null };
     if (pw) updates.password_hash = await hashPw(pw);
     const { error } = await supa.from('profiles').update(updates).eq('id', userId);
     if (error) return toast(error.message, 'error'), false;
@@ -1495,7 +1533,7 @@ async function rangeSelectOpts(selectedId) {
 }
 
 async function showAddRangeAdminModal() {
-  const opts = await rangeSelectOpts('');
+  const [opts, roleOpts] = await Promise.all([rangeSelectOpts(''), adminRoleOpts('rangeadmin')]);
   showModal('Add Range Admin', `
     <div class="form-group"><label>Full Name *</label><input id="mName"     type="text"     placeholder="Admin's full name"></div>
     <div class="form-group"><label>User Name *</label>     <input id="mEmail"    type="text"    placeholder="user name"></div>
@@ -1503,14 +1541,17 @@ async function showAddRangeAdminModal() {
     <div class="form-group"><label>Password *</label>  <input id="mPassword" type="password" placeholder="Min 6 characters"></div>
     <div class="form-group"><label>Assign to Range</label>
       <select id="mRangeId"><option value="">— No Range —</option>${opts}</select>
+    </div>
+    <div class="form-group"><label>Permission Role</label>
+      <select id="mRoleId"><option value="">— Full access (no role) —</option>${roleOpts}</select>
     </div>`,
   async () => {
-    const name = val('mName'), email = val('mEmail'), password = val('mPassword'), rangeId = val('mRangeId');
+    const name = val('mName'), email = val('mEmail'), password = val('mPassword'), rangeId = val('mRangeId'), roleId = val('mRoleId');
     if (!name || !email || !password) return toast('Name, user name and password are required', 'error'), false;
     if (password.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
     const password_hash = await hashPw(password);
     const { data: newAdmin, error } = await supa.from('profiles')
-      .insert({ name, username: email.toLowerCase(), password_hash, phone: val('mPhone')||null, role: 'rangeadmin', range_id: rangeId||null })
+      .insert({ name, username: email.toLowerCase(), password_hash, phone: val('mPhone')||null, role: 'rangeadmin', range_id: rangeId||null, role_id: roleId || null })
       .select().single();
     if (error) return toast(error.message, 'error'), false;
     if (rangeId) await assignRangeAdminToRange(newAdmin.id, rangeId);
@@ -1521,7 +1562,7 @@ async function showAddRangeAdminModal() {
 async function showEditRangeAdminModal(userId) {
   const { data: u } = await supa.from('profiles').select('*').eq('id', userId).single();
   if (!u) return;
-  const opts = await rangeSelectOpts(u.range_id || '');
+  const [opts, roleOpts] = await Promise.all([rangeSelectOpts(u.range_id || ''), adminRoleOpts('rangeadmin', u.role_id || '')]);
   showModal('Edit Range Admin', `
     <div class="form-group"><label>Full Name *</label><input id="mName"     type="text"     value="${esc(u.name)}"></div>
     <div class="form-group"><label>User Name *</label>     <input id="mEmail"    type="text"    value="${esc(u.username)}"></div>
@@ -1530,12 +1571,15 @@ async function showEditRangeAdminModal(userId) {
       <input id="mPassword" type="password" placeholder="New password"></div>
     <div class="form-group"><label>Assigned Range</label>
       <select id="mRangeId"><option value="">— No Range —</option>${opts}</select>
+    </div>
+    <div class="form-group"><label>Permission Role</label>
+      <select id="mRoleId"><option value="">— Full access (no role) —</option>${roleOpts}</select>
     </div>`,
   async () => {
-    const name = val('mName'), email = val('mEmail'), rangeId = val('mRangeId'), pw = val('mPassword');
+    const name = val('mName'), email = val('mEmail'), rangeId = val('mRangeId'), roleId = val('mRoleId'), pw = val('mPassword');
     if (!name || !email) return toast('Name and user name are required', 'error'), false;
     if (pw && pw.length < 6) return toast('Password must be at least 6 characters', 'error'), false;
-    const updates = { name, username: email.toLowerCase(), phone: val('mPhone')||null, range_id: rangeId||null };
+    const updates = { name, username: email.toLowerCase(), phone: val('mPhone')||null, range_id: rangeId||null, role_id: roleId || null };
     if (pw) updates.password_hash = await hashPw(pw);
     const { error } = await supa.from('profiles').update(updates).eq('id', userId);
     if (error) return toast(error.message, 'error'), false;
@@ -1565,6 +1609,31 @@ function permBadge(val) {
     : '<span class="badge badge-secondary">— No</span>';
 }
 
+function modulePermissionInputs(modules, permissions = {}) {
+  return modules.map(module => `
+    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">
+      <input type="checkbox" id="pModule_${module.key}" ${permissions[module.key] === true ? 'checked' : ''}> ${module.icon} ${module.label}
+    </label>`).join('');
+}
+
+function collectModulePermissions() {
+  return [...SITE_ADMIN_MODULES, ...RANGE_ADMIN_MODULES].reduce((permissions, module) => {
+    permissions[module.key] = document.getElementById(`pModule_${module.key}`)?.checked || false;
+    return permissions;
+  }, {});
+}
+
+function roleScopeAllows(role, scope) {
+  return !role.scope || role.scope === 'both' || role.scope === scope;
+}
+
+function roleOptions(roles, scope, selectedId = '') {
+  return (roles || [])
+    .filter(role => roleScopeAllows(role, scope))
+    .map(role => `<option value="${role.id}" ${role.id === selectedId ? 'selected' : ''}>${esc(role.name)}</option>`)
+    .join('');
+}
+
 function roleFormHTML(r) {
   const chk = v => v ? 'checked' : '';
   const perm = (id, icon, label, val) =>
@@ -1574,6 +1643,22 @@ function roleFormHTML(r) {
   return `
     <div class="form-group"><label>Role Name *</label>
       <input id="mRoleName" type="text" value="${r ? esc(r.name) : ''}" placeholder="e.g., Field Collector">
+    </div>
+    <div class="form-group"><label>Role Applies To</label>
+      <select id="mRoleScope">
+        <option value="field" ${!r?.scope || r.scope === 'field' ? 'selected' : ''}>Field User</option>
+        <option value="siteadmin" ${r?.scope === 'siteadmin' ? 'selected' : ''}>Site Admin</option>
+        <option value="rangeadmin" ${r?.scope === 'rangeadmin' ? 'selected' : ''}>Range Admin</option>
+        <option value="both" ${r?.scope === 'both' ? 'selected' : ''}>Site and Range Admin</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label style="display:block;margin-bottom:10px">Site Admin Modules</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${modulePermissionInputs(SITE_ADMIN_MODULES, r?.module_permissions || {})}</div>
+    </div>
+    <div class="form-group">
+      <label style="display:block;margin-bottom:10px">Range Admin Modules</label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${modulePermissionInputs(RANGE_ADMIN_MODULES, r?.module_permissions || {})}</div>
     </div>
     <div class="form-group">
       <label style="display:block;margin-bottom:10px">Field Permissions</label>
@@ -1589,7 +1674,6 @@ function roleFormHTML(r) {
     <div class="form-group">
       <label style="display:block;margin-bottom:10px">Management Access</label>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        ${perm('pSiteAdmin',     '🔑', 'Full Site Admin Access', r?.site_admin_access)}
         ${perm('pCreateMembers', '👨‍👩‍👧‍👦', 'Member Creation',        r?.create_members)}
         ${perm('pCreateDeps',    '👶', 'Dependent Creation',      r?.create_dependents)}
         ${perm('pCreateUsers',   '👥', 'Profile User Creation',   r?.create_users)}
@@ -1609,7 +1693,7 @@ async function renderSARoles() {
 
     el.innerHTML = `
       <div class="panel-header">
-        <div><h2>Roles</h2><p>Define activity permissions for user roles</p></div>
+        <div><h2>Roles</h2><p>Control access module by module for field, site, and range administrators</p></div>
         <div class="panel-header-actions"><button class="btn btn-primary" onclick="showAddRoleModal()">+ Add Role</button></div>
       </div>
       <div class="card">
@@ -1619,32 +1703,20 @@ async function renderSARoles() {
               <thead>
                 <tr>
                   <th>Role Name</th>
-                  <th>Fee Collection</th>
-                  <th>Data Collection</th>
-                  <th>View Reports</th>
-                  <th>Manage Events</th>
-                  <th>Expenses</th>
-                  <th>Restrict Login</th>
-                  <th>Site Admin Access</th>
-                  <th>Member Creation</th>
-                  <th>Dependent Creation</th>
-                  <th>User Creation</th>
+                  <th>Scope</th>
+                  <th>Site Modules</th>
+                  <th>Range Modules</th>
+                  <th>Field Permissions</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 ${roles.map(r => `<tr>
                   <td><strong>${esc(r.name)}</strong></td>
-                  <td>${permBadge(r.fee_collection)}</td>
-                  <td>${permBadge(r.data_collection)}</td>
-                  <td>${permBadge(r.view_reports)}</td>
-                  <td>${permBadge(r.manage_events)}</td>
-                  <td>${permBadge(r.expenses)}</td>
-                  <td>${permBadge(r.restrict_login)}</td>
-                  <td>${permBadge(r.site_admin_access)}</td>
-                  <td>${permBadge(r.create_members)}</td>
-                  <td>${permBadge(r.create_dependents)}</td>
-                  <td>${permBadge(r.create_users)}</td>
+                  <td><span class="badge badge-info">${esc(r.scope || 'field')}</span></td>
+                  <td>${SITE_ADMIN_MODULES.filter(module => r.module_permissions?.[module.key]).length} enabled</td>
+                  <td>${RANGE_ADMIN_MODULES.filter(module => r.module_permissions?.[module.key]).length} enabled</td>
+                  <td>${[r.fee_collection, r.data_collection, r.view_reports, r.manage_events, r.expenses, r.create_members, r.create_dependents, r.create_users].filter(Boolean).length} enabled</td>
                   <td><div class="table-actions">
                     <button class="btn btn-secondary btn-sm" onclick="showEditRoleModal('${r.id}')">✏️ Edit</button>
                     <button class="btn btn-danger btn-sm"    onclick="deleteRole('${r.id}')">🗑️</button>
@@ -1663,13 +1735,14 @@ async function showAddRoleModal() {
     if (!name) return toast('Role name is required', 'error'), false;
     const { error } = await supa.from('roles').insert({
       name,
+      scope:              val('mRoleScope') || 'field',
+      module_permissions: collectModulePermissions(),
       fee_collection:    document.getElementById('pFee')?.checked          || false,
       data_collection:   document.getElementById('pData')?.checked         || false,
       view_reports:      document.getElementById('pReports')?.checked      || false,
       manage_events:     document.getElementById('pEvents')?.checked       || false,
       expenses:          document.getElementById('pExpenses')?.checked     || false,
       restrict_login:    document.getElementById('pNoLogin')?.checked      || false,
-      site_admin_access: document.getElementById('pSiteAdmin')?.checked    || false,
       create_members:    document.getElementById('pCreateMembers')?.checked || false,
       create_dependents: document.getElementById('pCreateDeps')?.checked   || false,
       create_users:      document.getElementById('pCreateUsers')?.checked  || false,
@@ -1687,13 +1760,14 @@ async function showEditRoleModal(roleId) {
     if (!name) return toast('Role name is required', 'error'), false;
     const { error } = await supa.from('roles').update({
       name,
+      scope:              val('mRoleScope') || 'field',
+      module_permissions: collectModulePermissions(),
       fee_collection:    document.getElementById('pFee')?.checked          || false,
       data_collection:   document.getElementById('pData')?.checked         || false,
       view_reports:      document.getElementById('pReports')?.checked      || false,
       manage_events:     document.getElementById('pEvents')?.checked       || false,
       expenses:          document.getElementById('pExpenses')?.checked     || false,
       restrict_login:    document.getElementById('pNoLogin')?.checked      || false,
-      site_admin_access: document.getElementById('pSiteAdmin')?.checked    || false,
       create_members:    document.getElementById('pCreateMembers')?.checked || false,
       create_dependents: document.getElementById('pCreateDeps')?.checked   || false,
       create_users:      document.getElementById('pCreateUsers')?.checked  || false,

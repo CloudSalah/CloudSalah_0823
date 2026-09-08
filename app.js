@@ -4674,7 +4674,7 @@ async function renderUserFees() {
             </table>
           </div>
         </div>`}
-      <button class="btn btn-primary" style="position:fixed;right:24px;bottom:24px;z-index:10;box-shadow:0 6px 18px rgba(0,0,0,.2)" onclick="showDonationModal()">＋ Donation</button>`;
+      `;
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 

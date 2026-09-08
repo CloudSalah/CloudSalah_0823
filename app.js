@@ -20,7 +20,7 @@ const SITE_ADMIN_MODULES = [
   { key: 'admin-donations', label: 'Donations', icon: '🤲', group: 'Finance' },
   { key: 'admin-expenses', label: 'Expenses', icon: '💸', group: 'Finance' },
   { key: 'admin-revenues', label: 'Revenue', icon: '📈', group: 'Finance' },
-  { key: 'admin-data', label: 'Data Records', icon: '📁', group: 'Collections' },
+  { key: 'admin-data', label: 'Data Collection', icon: '📁', group: 'Collections' },
   { key: 'admin-reports', label: 'Collection Report', icon: '📈', group: 'Reports' },
   { key: 'admin-data-report', label: 'Data Collection Report', icon: '📁', group: 'Reports' },
   { key: 'admin-association-report', label: 'Association Report', icon: '📋', group: 'Reports' },
@@ -32,6 +32,14 @@ const RANGE_ADMIN_MODULES = [
   { key: 'rangeadmin-dashboard', label: 'Dashboard', icon: '📊', group: 'Overview' },
   { key: 'ra-sites', label: 'Sites', icon: '🏘️', group: 'Management' },
   { key: 'ra-admins', label: 'Site Admins', icon: '👤', group: 'Management' },
+];
+
+const FIELD_USER_MODULES = [
+  { key: 'user-revenues', label: 'Revenues', icon: '📈', group: 'Field User Modules', panel: 'admin-revenues' },
+  { key: 'user-donations', label: 'Donation Collection', icon: '🤲', group: 'Field User Modules', panel: 'user-donations' },
+  { key: 'user-members', label: 'Members', icon: '👨‍👩‍👧‍👦', group: 'Field User Modules', panel: 'admin-members' },
+  { key: 'user-dependents', label: 'Dependents', icon: '👶', group: 'Field User Modules', panel: 'admin-dependents' },
+  { key: 'user-approvals', label: 'Approvals', icon: '✅', group: 'Field User Modules', panel: 'admin-approvals' },
 ];
 
 function roleHasExplicitModulePermissions(roleData, modules) {
@@ -46,6 +54,10 @@ function canAccessPanel(panelId) {
   if (currentUser.role === 'siteadmin' || currentUser.role === 'rangeadmin') {
     if (!roleData || !roleHasExplicitModulePermissions(roleData, modules)) return true;
     return roleData.module_permissions?.[panelId] === true;
+  }
+  if (currentUser.role === 'user' && roleHasExplicitModulePermissions(roleData, FIELD_USER_MODULES)) {
+    const module = FIELD_USER_MODULES.find(item => item.panel === panelId);
+    if (module) return roleData.module_permissions?.[module.key] === true;
   }
   return true;
 }
@@ -168,6 +180,10 @@ async function renderPanel(id) {
     'admin-association-report': renderAdminAssociationReport,
     'admin-expense-report': renderAdminExpenseReport,
     'admin-balance-sheet':  renderAdminBalanceSheet,
+    'user-revenues':    renderAdminRevenues,
+    'user-members':     renderAdminMembers,
+    'user-dependents':  renderAdminDependents,
+    'user-approvals':   renderAdminApprovals,
     'user-dashboard':   renderUserDashboard,
     'user-fees':        renderUserFees,
     'user-donations':   renderUserDonations,
@@ -218,6 +234,7 @@ function renderSidebar() {
   } else {
     // When no role is assigned show everything; when a role exists enforce its permissions
     const rd = currentUser.roleData;
+    const explicitFieldModules = roleHasExplicitModulePermissions(rd, FIELD_USER_MODULES);
 
     // Full site admin access — render the complete admin sidebar
     if (rd?.site_admin_access) {
@@ -249,8 +266,11 @@ function renderSidebar() {
     const showData     = !rd || rd.data_collection;
     const showEvents   = rd?.manage_events;
     const showExpenses = rd?.expenses;
-    const showMembers  = rd?.create_members;
-    const showDeps     = rd?.create_dependents;
+    const showDonation = explicitFieldModules ? rd.module_permissions?.['user-donations'] === true : showFee;
+    const showMembers  = rd?.create_members || (explicitFieldModules && rd.module_permissions?.['user-members'] === true);
+    const showDeps     = rd?.create_dependents || (explicitFieldModules && rd.module_permissions?.['user-dependents'] === true);
+    const showApprovals = explicitFieldModules && rd.module_permissions?.['user-approvals'] === true;
+    const showRevenues = explicitFieldModules && rd.module_permissions?.['user-revenues'] === true;
     const showUsers    = rd?.create_users;
     nav.innerHTML = `
       <div class="nav-section">Overview</div>
@@ -261,10 +281,12 @@ function renderSidebar() {
       ${showDeps    ? `<div class="nav-item" data-panel="admin-dependents" onclick="navigate('admin-dependents')"><span class="nav-icon">👶</span>Dependents</div>` : ''}
       <div class="nav-section">My Work</div>
       ${showFee    ? `<div class="nav-item" data-panel="user-fees"    onclick="navigate('user-fees')"><span class="nav-icon">💰</span>Payment Collections</div>` : ''}
-      ${showFee    ? `<div class="nav-item" data-panel="user-donations" onclick="navigate('user-donations')"><span class="nav-icon">🤲</span>Donations</div>` : ''}
+      ${showDonation ? `<div class="nav-item" data-panel="user-donations" onclick="navigate('user-donations')"><span class="nav-icon">🤲</span>Donation Collection</div>` : ''}
       ${showData   ? `<div class="nav-item" data-panel="user-data"    onclick="navigate('user-data')"><span class="nav-icon">📁</span>Data Collection</div>` : ''}
       <div class="nav-item" data-panel="user-history" onclick="navigate('user-history')"><span class="nav-icon">🕑</span>My History</div>
       ${showEvents   ? `<div class="nav-item" data-panel="user-events"  onclick="navigate('user-events')"><span class="nav-icon">📋</span>Manage Events</div>` : ''}
+      ${showApprovals ? `<div class="nav-item" data-panel="admin-approvals" onclick="navigate('admin-approvals')"><span class="nav-icon">✅</span>Approvals</div>` : ''}
+      ${showRevenues ? `<div class="nav-item" data-panel="admin-revenues" onclick="navigate('admin-revenues')"><span class="nav-icon">📈</span>Revenues</div>` : ''}
       ${showExpenses ? `<div class="nav-item" data-panel="user-expenses" onclick="navigate('user-expenses')"><span class="nav-icon">💸</span>Expenses</div>` : ''}`;
   }
 }
@@ -1611,13 +1633,13 @@ function permBadge(val) {
 
 function modulePermissionInputs(modules, permissions = {}) {
   return modules.map(module => `
-    <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">
+    <label class="role-permission-option">
       <input type="checkbox" id="pModule_${module.key}" ${permissions[module.key] === true ? 'checked' : ''}> ${module.icon} ${module.label}
     </label>`).join('');
 }
 
 function collectModulePermissions() {
-  return [...SITE_ADMIN_MODULES, ...RANGE_ADMIN_MODULES].reduce((permissions, module) => {
+  return [...SITE_ADMIN_MODULES, ...RANGE_ADMIN_MODULES, ...FIELD_USER_MODULES].reduce((permissions, module) => {
     permissions[module.key] = document.getElementById(`pModule_${module.key}`)?.checked || false;
     return permissions;
   }, {});
@@ -1634,10 +1656,20 @@ function roleOptions(roles, scope, selectedId = '') {
     .join('');
 }
 
+function toggleRoleModuleSections() {
+  const scope = document.getElementById('mRoleScope')?.value || 'field';
+  const siteSection = document.getElementById('siteAdminModuleSection');
+  const rangeSection = document.getElementById('rangeAdminModuleSection');
+  const fieldSection = document.getElementById('fieldUserModuleSection');
+  if (siteSection) siteSection.style.display = scope === 'siteadmin' || scope === 'both' ? '' : 'none';
+  if (rangeSection) rangeSection.style.display = scope === 'rangeadmin' || scope === 'both' ? '' : 'none';
+  if (fieldSection) fieldSection.style.display = scope === 'field' ? '' : 'none';
+}
+
 function roleFormHTML(r) {
   const chk = v => v ? 'checked' : '';
   const perm = (id, icon, label, val) =>
-    `<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">
+    `<label class="role-permission-option">
       <input type="checkbox" id="${id}" ${chk(val)}> ${icon} ${label}
     </label>`;
   return `
@@ -1645,24 +1677,25 @@ function roleFormHTML(r) {
       <input id="mRoleName" type="text" value="${r ? esc(r.name) : ''}" placeholder="e.g., Field Collector">
     </div>
     <div class="form-group"><label>Role Applies To</label>
-      <select id="mRoleScope">
+      <select id="mRoleScope" onchange="toggleRoleModuleSections()">
         <option value="field" ${!r?.scope || r.scope === 'field' ? 'selected' : ''}>Field User</option>
         <option value="siteadmin" ${r?.scope === 'siteadmin' ? 'selected' : ''}>Site Admin</option>
         <option value="rangeadmin" ${r?.scope === 'rangeadmin' ? 'selected' : ''}>Range Admin</option>
         <option value="both" ${r?.scope === 'both' ? 'selected' : ''}>Site and Range Admin</option>
       </select>
     </div>
-    <div class="form-group">
+    <div id="siteAdminModuleSection" class="form-group">
       <label style="display:block;margin-bottom:10px">Site Admin Modules</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${modulePermissionInputs(SITE_ADMIN_MODULES, r?.module_permissions || {})}</div>
+      <div class="role-permission-grid">${modulePermissionInputs(SITE_ADMIN_MODULES, r?.module_permissions || {})}</div>
     </div>
-    <div class="form-group">
+    <div id="rangeAdminModuleSection" class="form-group">
       <label style="display:block;margin-bottom:10px">Range Admin Modules</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">${modulePermissionInputs(RANGE_ADMIN_MODULES, r?.module_permissions || {})}</div>
+      <div class="role-permission-grid">${modulePermissionInputs(RANGE_ADMIN_MODULES, r?.module_permissions || {})}</div>
     </div>
-    <div class="form-group">
-      <label style="display:block;margin-bottom:10px">Field Permissions</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+    <div id="fieldUserModuleSection" class="form-group">
+      <label style="display:block;margin-bottom:10px">Field User Modules</label>
+      <div class="role-permission-grid">
+        ${modulePermissionInputs(FIELD_USER_MODULES, r?.module_permissions || {})}
         ${perm('pFee',      '💰', 'Fee Collection',        r?.fee_collection)}
         ${perm('pData',     '📁', 'Data Collection',       r?.data_collection)}
         ${perm('pReports',  '📈', 'View Reports',          r?.view_reports)}
@@ -1706,6 +1739,7 @@ async function renderSARoles() {
                   <th>Scope</th>
                   <th>Site Modules</th>
                   <th>Range Modules</th>
+                  <th>Field User Modules</th>
                   <th>Field Permissions</th>
                   <th>Actions</th>
                 </tr>
@@ -1716,6 +1750,7 @@ async function renderSARoles() {
                   <td><span class="badge badge-info">${esc(r.scope || 'field')}</span></td>
                   <td>${SITE_ADMIN_MODULES.filter(module => r.module_permissions?.[module.key]).length} enabled</td>
                   <td>${RANGE_ADMIN_MODULES.filter(module => r.module_permissions?.[module.key]).length} enabled</td>
+                  <td>${FIELD_USER_MODULES.filter(module => r.module_permissions?.[module.key]).length} enabled</td>
                   <td>${[r.fee_collection, r.data_collection, r.view_reports, r.manage_events, r.expenses, r.create_members, r.create_dependents, r.create_users].filter(Boolean).length} enabled</td>
                   <td><div class="table-actions">
                     <button class="btn btn-secondary btn-sm" onclick="showEditRoleModal('${r.id}')">✏️ Edit</button>
@@ -1750,6 +1785,7 @@ async function showAddRoleModal() {
     if (error) return toast(error.message, 'error'), false;
     toast('Role created', 'success'); await navigate('sa-roles'); return true;
   });
+  toggleRoleModuleSections();
 }
 
 async function showEditRoleModal(roleId) {
@@ -1775,6 +1811,7 @@ async function showEditRoleModal(roleId) {
     if (error) return toast(error.message, 'error'), false;
     toast('Role updated', 'success'); await navigate('sa-roles'); return true;
   });
+  toggleRoleModuleSections();
 }
 
 function deleteRole(roleId) {
@@ -3862,8 +3899,8 @@ function updateDataCheckboxSummary(input) {
   summary.firstChild.textContent = selected.length ? selected.join(', ') : 'Select values';
 }
 
-async function renderAdminData() {
-  const el = document.getElementById('admin-data');
+async function renderAdminData(panelId = 'admin-data') {
+  const el = document.getElementById(panelId);
   const siteId = currentUser.site_id;
   if (!siteId) { el.innerHTML = noSiteMsg(); return; }
   setLoading(el);
@@ -3907,7 +3944,7 @@ async function renderAdminData() {
 
     el.innerHTML = `
       <div class="panel-header">
-        <div><h2>Data Records</h2><p>All data collection records for your site</p></div>
+        <div><h2>Data Collection</h2><p>Record community member information</p></div>
         <div class="panel-header-actions"><button class="btn btn-secondary" onclick="exportDataCSV()">⬇️ Export CSV</button></div>
       </div>
       <div class="card" style="margin-bottom:20px">
@@ -3988,6 +4025,7 @@ async function saveSelectedDataRecords() {
     id: row.dataset.recordId || null,
     activity_id: eventId,
     collected_by: currentUser.id,
+    last_updated_by: currentUser.id,
     qustion_id: row.dataset.questionId || null,
     answer: getDataControlAnswer(row) || null,
     control_type: row.dataset.controlType || 'Text box',
@@ -3996,10 +4034,16 @@ async function saveSelectedDataRecords() {
   }));
   const results = await Promise.all(records.map(record => {
     const { id, ...values } = record;
-    return id ? supa.from('data_records').update(values).eq('id', id) : supa.from('data_records').insert(values);
+    if (id) {
+      delete values.collected_by;
+      return supa.from('data_records').update(values).eq('id', id).select('id, collected_by, last_updated_by').single();
+    }
+    return supa.from('data_records').insert(values).select('id, collected_by, last_updated_by').single();
   }));
   const error = results.find(result => result.error)?.error;
   if (error) return toast(error.message, 'error');
+  if (results.some(result => result.data?.last_updated_by !== currentUser.id))
+    return toast('The record was saved, but last_updated_by was not updated', 'error');
   toast('Data saved successfully', 'success');
   await showSelectedDataQuestionnaire();
 }
@@ -4699,57 +4743,7 @@ function fillPayerFromMember() {
 // ============================================================
 
 async function renderUserData() {
-  const el = document.getElementById('user-data');
-  setLoading(el);
-  try {
-    const userId = currentUser.id;
-    const dataTypeId = await getEventTypeId('data');
-    const [{ data: myDataActs }, { data: myDataRecs }] = await Promise.all([
-      supa.from('activities').select('*').eq('type', dataTypeId).contains('assigned_users', [userId]),
-      supa.from('data_records').select('*, activity:activities!activity_id(name), member:members!member_id(name)').eq('collected_by', userId).order('date', { ascending: false }),
-    ]);
-    const actDataMap = {};
-    (myDataRecs || []).forEach(r => { actDataMap[r.activity_id] = (actDataMap[r.activity_id] || 0) + 1; });
-
-    el.innerHTML = `
-      <div class="panel-header"><div><h2>Data Collection</h2><p>Record community member information</p></div></div>
-      ${!(myDataActs || []).length ? emptyState('📁', 'No data activities assigned', 'Your site admin will assign data collection activities to you') : `
-        <div class="card" style="margin-bottom:20px">
-          <div class="card-header"><h3>My Data Activities</h3></div>
-          <div class="card-body">
-            <div class="activity-grid">
-              ${myDataActs.map(a => `<div class="activity-card data">
-                <h4>${esc(a.name)}</h4>
-                <div class="activity-meta">
-                  ${a.description ? `<div>${esc(a.description)}</div>` : ''}
-                  <div>Due: ${a.due_date ? fmtDate(a.due_date) : 'No deadline'}</div>
-                </div>
-                <div class="activity-stats"><span>📝 ${actDataMap[a.id] || 0} records</span></div>
-                <button class="btn btn-primary btn-sm" onclick="showRecordDataModal('${a.id}')">+ Record Data</button>
-              </div>`).join('')}
-            </div>
-          </div>
-        </div>
-        <div class="card">
-          <div class="card-header"><h3>My Data Records</h3></div>
-          <div class="card-body table-wrapper">
-            <table>
-              <thead><tr><th>Name</th><th>Address</th><th>Phone</th><th>Activity</th><th>Date</th><th>Notes</th></tr></thead>
-              <tbody>
-                ${!(myDataRecs || []).length ? `<tr><td colspan="6">${emptyState('📝', 'No records yet', '')}</td></tr>` :
-                  myDataRecs.map(r => `<tr>
-                    <td><strong>${esc(r.person_name)}</strong></td>
-                    <td>${esc(r.address || '—')}</td>
-                    <td>${esc(r.phone || '—')}</td>
-                    <td>${r.activity?.name ? esc(r.activity.name) : '—'}</td>
-                    <td>${fmtDate(r.date)}</td>
-                    <td>${esc(r.notes || '—')}</td>
-                  </tr>`).join('')}
-              </tbody>
-            </table>
-          </div>
-        </div>`}`;
-  } catch (err) { el.innerHTML = errHTML(err.message); }
+  return renderAdminData('user-data');
 }
 
 async function showRecordDataModal(actId) {
@@ -4768,6 +4762,7 @@ async function showRecordDataModal(actId) {
     if (!date)       return toast('Date is required', 'error'), false;
     const { error } = await supa.from('data_records').insert({
       activity_id: actId, site_id: currentUser.site_id, collected_by: currentUser.id,
+      last_updated_by: currentUser.id,
       person_name: personName, address: val('mAddress') || null, phone: val('mPhone') || null,
       email: val('mEmail') || null, date, notes: val('mNotes') || null,
     });
@@ -4785,13 +4780,75 @@ async function renderUserHistory() {
   setLoading(el);
   try {
     const userId = currentUser.id;
-    const [{ data: feeRecs }, { data: dataRecs }, { data: expRecs }] = await Promise.all([
+    const [{ data: feeRecs, error: feeError }, { data: dataRecs, error: dataError }, { data: expRecs, error: expenseError }] = await Promise.all([
       supa.from('fee_records').select('*, activity:activities!activity_id(name), member:members!member_id(name)').eq('collected_by', userId).order('date', { ascending: false }),
-      supa.from('data_records').select('*, activity:activities!activity_id(name), member:members!member_id(name)').eq('collected_by', userId).order('date', { ascending: false }),
+      supa.from('data_records').select('*').eq('last_updated_by', userId),
       supa.from('expenses').select('*, category:expense_categories!category_id(name)').eq('entered_by', userId).order('date', { ascending: false }),
     ]);
+    if (feeError || dataError || expenseError) throw feeError || dataError || expenseError;
+
+    const activityIds = [...new Set((dataRecs || []).map(record => record.activity_id).filter(Boolean))];
+    const memberIds = [...new Set((dataRecs || []).map(record => record.member_id).filter(Boolean))];
+    const [{ data: dataActivities, error: activitiesError }, { data: dataMembers, error: membersError }] = await Promise.all([
+      activityIds.length ? supa.from('activities').select('id, name').in('id', activityIds) : Promise.resolve({ data: [], error: null }),
+      memberIds.length ? supa.from('members').select('id, name').in('id', memberIds) : Promise.resolve({ data: [], error: null }),
+    ]);
+    if (activitiesError || membersError) throw activitiesError || membersError;
+    const activityMap = Object.fromEntries((dataActivities || []).map(activity => [activity.id, activity.name]));
+    const memberMap = Object.fromEntries((dataMembers || []).map(member => [member.id, member.name]));
+    (dataRecs || []).forEach(record => {
+      record.activity = { name: activityMap[record.activity_id] };
+      record.member = { name: memberMap[record.member_id] };
+    });
     const total    = (feeRecs || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
     const totalExp = (expRecs || []).reduce((s, r) => s + parseFloat(r.amount || 0), 0);
+    const feeHistory = (feeRecs || []).length ? `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><h3>Fee Collection History</h3></div>
+        <div class="card-body table-wrapper">
+          <table>
+            <thead><tr><th>Payer</th><th>Amount</th><th>Activity</th><th>Date</th><th>Notes</th></tr></thead>
+            <tbody>${feeRecs.map(r => `<tr>
+              <td><strong>${esc(r.member?.name || r.payer_name || '—')}</strong></td>
+              <td><strong class="text-green">₹${parseFloat(r.amount).toFixed(2)}</strong></td>
+              <td>${r.activity?.name ? esc(r.activity.name) : '—'}</td>
+              <td>${fmtDate(r.date)}</td>
+              <td>${esc(r.notes || '—')}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>` : '';
+    const dataHistory = (dataRecs || []).length ? `
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header"><h3>Data Collection History</h3></div>
+        <div class="card-body table-wrapper">
+          <table>
+            <thead><tr><th>Member</th><th>Activity</th><th>Data Entered</th><th>Date</th><th>Notes</th></tr></thead>
+            <tbody>${dataRecs.map(r => `<tr>
+              <td><strong>${esc(r.member?.name || r.person_name || '—')}</strong></td>
+              <td>${r.activity?.name ? esc(r.activity.name) : '—'}</td>
+              <td>${esc(r.answer || [r.address, r.phone, r.email].filter(Boolean).join(' | ') || '—')}</td>
+              <td>${fmtDate(r.date || r.created_at)}</td>
+              <td>${esc(r.notes || '—')}</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>` : '';
+    const expenseHistory = (expRecs || []).length ? `
+      <div class="card">
+        <div class="card-header"><h3>Expense History</h3></div>
+        <div class="card-body table-wrapper">
+          <table>
+            <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th></tr></thead>
+            <tbody>${expRecs.map(r => `<tr>
+              <td>${fmtDate(r.date)}</td>
+              <td>${r.category?.name ? esc(r.category.name) : '—'}</td>
+              <td>${esc(r.description || '—')}</td>
+              <td><strong class="text-danger">₹${parseFloat(r.amount).toFixed(2)}</strong></td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>` : '';
 
     el.innerHTML = `
       <div class="panel-header"><div><h2>My History</h2><p>All your collection records</p></div></div>
@@ -4801,59 +4858,9 @@ async function renderUserHistory() {
         ${statCard('📁', 'si-purple', (dataRecs || []).length,   'Data Records')}
         ${statCard('💸', 'si-yellow', '₹' + totalExp.toFixed(2), 'Expenses Entered')}
       </div>
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-header"><h3>Fee Collection History</h3></div>
-        <div class="card-body table-wrapper">
-          <table>
-            <thead><tr><th>Payer</th><th>Amount</th><th>Activity</th><th>Date</th><th>Notes</th></tr></thead>
-            <tbody>
-              ${!(feeRecs || []).length ? `<tr><td colspan="5">${emptyState('💰', 'No fee records', '')}</td></tr>` :
-                feeRecs.map(r => `<tr>
-                  <td><strong>${esc(r.member?.name || r.payer_name || "�")}</strong></td>
-                  <td><strong class="text-green">₹${parseFloat(r.amount).toFixed(2)}</strong></td>
-                  <td>${r.activity?.name ? esc(r.activity.name) : '—'}</td>
-                  <td>${fmtDate(r.date)}</td>
-                  <td>${esc(r.notes || '—')}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-header"><h3>Data Collection History</h3></div>
-        <div class="card-body table-wrapper">
-          <table>
-            <thead><tr><th>Name</th><th>Address</th><th>Phone</th><th>Activity</th><th>Date</th></tr></thead>
-            <tbody>
-              ${!(dataRecs || []).length ? `<tr><td colspan="5">${emptyState('📁', 'No data records', '')}</td></tr>` :
-                dataRecs.map(r => `<tr>
-                  <td><strong>${esc(r.person_name)}</strong></td>
-                  <td>${esc(r.address || '—')}</td>
-                  <td>${esc(r.phone || '—')}</td>
-                  <td>${r.activity?.name ? esc(r.activity.name) : '—'}</td>
-                  <td>${fmtDate(r.date)}</td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="card">
-        <div class="card-header"><h3>Expense History</h3></div>
-        <div class="card-body table-wrapper">
-          <table>
-            <thead><tr><th>Date</th><th>Category</th><th>Description</th><th>Amount</th></tr></thead>
-            <tbody>
-              ${!(expRecs || []).length ? `<tr><td colspan="4">${emptyState('💸', 'No expense records', '')}</td></tr>` :
-                expRecs.map(r => `<tr>
-                  <td>${fmtDate(r.date)}</td>
-                  <td>${r.category?.name ? esc(r.category.name) : '—'}</td>
-                  <td>${esc(r.description || '—')}</td>
-                  <td><strong class="text-danger">₹${parseFloat(r.amount).toFixed(2)}</strong></td>
-                </tr>`).join('')}
-            </tbody>
-          </table>
-        </div>
-      </div>`;
+      ${feeHistory}
+      ${dataHistory}
+      ${expenseHistory}`;
   } catch (err) { el.innerHTML = errHTML(err.message); }
 }
 

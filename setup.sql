@@ -152,6 +152,10 @@ alter table public.data_records add column if not exists qustion_id uuid;
 alter table public.data_records add column if not exists answer text;
 alter table public.data_records add column if not exists control_type text;
 alter table public.data_records add column if not exists member_id uuid;
+alter table public.data_records add column if not exists last_updated_by uuid references public.profiles(id) on delete set null;
+update public.data_records
+set last_updated_by = collected_by
+where last_updated_by is null and collected_by is not null;
 
 -- ========================
 -- DATA COLLECTION QUESTIONNAIRES

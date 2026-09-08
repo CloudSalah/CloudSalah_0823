@@ -78,6 +78,28 @@ body {
 #loginPage .btn-primary { background: #2e9e6b; border-color: #2e9e6b; display: block; margin: 0; }
 .login-copyright { position: fixed; bottom: 14px; left: 0; width: 100%; text-align: center; font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.3px; }
 .login-copyright { position: fixed; bottom: 14px; left: 0; width: 100%; text-align: center; font-size: 12px; color: rgba(255,255,255,0.55); letter-spacing: 0.3px; }
+
+.role-permission-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.role-permission-option {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.role-permission-option input { flex: 0 0 auto; }
 #loginPage .btn-primary:hover { background: #237a53; border-color: #237a53; }
 
 .login-logo {

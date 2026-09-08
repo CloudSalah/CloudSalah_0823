@@ -563,6 +563,8 @@ tbody tr:hover { background: #fafbfc; }
 .data-control-cell > .data-radio-preview,
 .data-control-cell > .data-checkbox-dropdown { margin-left: auto; }
 .data-record-actions { display: flex; justify-content: flex-end; padding-top: 16px; }
+.data-report-answers { display: flex; flex-wrap: wrap; gap: 6px; }
+.data-report-answer { display: inline-flex; gap: 5px; align-items: center; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; background: #f8fafc; white-space: nowrap; font-size: 12px; }
 .data-record-notes { width: 100%; padding-top: 16px; }
 .data-record-notes label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #374151; }
 .data-record-notes textarea { display: block; width: 100%; height: 3cm; min-height: 3cm; resize: vertical; box-sizing: border-box; }

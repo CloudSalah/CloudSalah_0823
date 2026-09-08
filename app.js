@@ -110,6 +110,7 @@ async function renderPanel(id) {
     'admin-revenues':   renderAdminRevenues,
     'admin-data':       renderAdminData,
     'admin-reports':    renderAdminReports,
+    'admin-data-report': renderAdminDataReport,
     'admin-association-report': renderAdminAssociationReport,
     'admin-expense-report': renderAdminExpenseReport,
     'admin-balance-sheet':  renderAdminBalanceSheet,
@@ -175,6 +176,7 @@ function renderSidebar() {
       <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
+      <div class="nav-item" data-panel="admin-data-report" onclick="navigate('admin-data-report')"><span class="nav-icon">📁</span>Data Collection Report</div>
       <div class="nav-item" data-panel="admin-association-report" onclick="navigate('admin-association-report')"><span class="nav-icon">📋</span>Association Report</div>
       <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
       <div class="nav-item" data-panel="admin-balance-sheet"  onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>
@@ -209,6 +211,7 @@ function renderSidebar() {
         <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>
         <div class="nav-section">Reports</div>
         <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
+        <div class="nav-item" data-panel="admin-data-report" onclick="navigate('admin-data-report')"><span class="nav-icon">📁</span>Data Collection Report</div>
         <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
         <div class="nav-item" data-panel="admin-balance-sheet"  onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>
         `;
@@ -3947,6 +3950,86 @@ function deleteDataRecord(id) {
 // ============================================================
 //  SITE ADMIN — REPORTS
 // ============================================================
+
+function dataReportControlType(form, record) {
+  if (record?.control_type) return record.control_type;
+  let config = {};
+  try { config = form?.answer ? JSON.parse(form.answer) : {}; } catch (_) { config = {}; }
+  return config.type === 'dropdown' ? 'Dropdown' : config.type === 'checkbox' ? 'Dropdown checkbox' : config.type === 'radio' ? 'Radio button' : 'Text box';
+}
+
+function dataReportAnswerValues(record) {
+  return String(record?.answer || '').split(',').map(value => value.trim()).filter(Boolean);
+}
+
+function buildDataCollectionReport(eventId = '', questionId = '') {
+  const report = window._dataCollectionReport || { activities: [], forms: [], assignments: [], records: [] };
+  const activities = report.activities.filter(activity => !eventId || activity.id === eventId);
+  const activityMap = Object.fromEntries(report.activities.map(activity => [activity.id, activity]));
+  const formsByEvent = {};
+  report.forms.forEach(form => (formsByEvent[form.event_id] ||= []).push(form));
+  const assignmentsByEvent = {};
+  report.assignments.forEach(assignment => (assignmentsByEvent[assignment.activity_id] ||= []).push(assignment));
+  const recordsByQuestion = {};
+  report.records.forEach(record => (recordsByQuestion[record.qustion_id] ||= []).push(record));
+  const availableQuestionIds = new Set(activities.flatMap(activity => (formsByEvent[activity.id] || []).map(form => form.id)));
+  const selectedQuestionId = availableQuestionIds.has(questionId) ? questionId : '';
+  const eventRows = activities.map(activity => {
+    const forms = formsByEvent[activity.id] || [];
+    const assigned = (assignmentsByEvent[activity.id] || []).length;
+    const expected = assigned * forms.length;
+    const records = report.records.filter(record => record.activity_id === activity.id);
+    const answered = records.filter(record => String(record.answer || '').trim()).length;
+    const members = new Set(records.map(record => record.member_id).filter(Boolean)).size;
+    return { activity, questions: forms.length, assigned, expected, answered, members, completion: expected ? Math.round((answered / expected) * 100) : 0 };
+  });
+  const questionRows = activities.flatMap(activity => (formsByEvent[activity.id] || []).filter(form => !selectedQuestionId || form.id === selectedQuestionId).map(form => {
+    const records = recordsByQuestion[form.id] || [];
+    const answers = records.flatMap(dataReportAnswerValues);
+    let config = {};
+    try { config = form.answer ? JSON.parse(form.answer) : {}; } catch (_) { config = {}; }
+    const counts = Object.fromEntries((Array.isArray(config.options) ? config.options : []).map(option => [option, 0]));
+    answers.forEach(answer => { counts[answer] = (counts[answer] || 0) + 1; });
+    const answered = records.filter(record => String(record.answer || '').trim()).length;
+    return { activity, form, records, answered, total: records.length, control: dataReportControlType(form, records[0]), counts };
+  }));
+  const totalExpected = eventRows.reduce((sum, row) => sum + row.expected, 0);
+  const totalAnswered = eventRows.reduce((sum, row) => sum + row.answered, 0);
+  const selectedLabel = eventId ? activityMap[eventId]?.name : 'All data events';
+  const answerRows = counts => Object.entries(counts).sort((left, right) => right[1] - left[1]).map(([answer, count]) => ({ answer, count }));
+  const questionnaireOptions = activities.flatMap(activity => formsByEvent[activity.id] || []).map(form => `<option value="${form.id}" ${selectedQuestionId === form.id ? 'selected' : ''}>${esc(form.questionnaire || '—')}</option>`).join('');
+  return `<div class="panel-header"><div><h2>Data Collection Report</h2><p>Event-wise and questionnaire-wise collection analytics</p></div></div>
+    <div class="card" style="margin-bottom:20px"><div class="card-body"><div class="filters"><select id="dataReportEvent" onchange="refreshDataCollectionReport()"><option value="">All Data Events</option>${report.activities.map(activity => `<option value="${activity.id}" ${eventId === activity.id ? 'selected' : ''}>${esc(activity.name)}</option>`).join('')}</select></div></div></div>
+    <div class="stats-grid">${statCard('📋', 'si-blue', eventRows.length, 'Events')}${statCard('👥', 'si-purple', eventRows.reduce((sum, row) => sum + row.assigned, 0), 'Assigned Members')}${statCard('✅', 'si-green', totalAnswered, 'Answered')}${statCard('📊', 'si-yellow', totalExpected ? `${Math.round((totalAnswered / totalExpected) * 100)}%` : '0%', 'Completion')}</div>
+    <div class="card" style="margin-bottom:20px"><div class="card-header"><h3>Event-wise Analytics</h3></div><div class="card-body table-wrapper"><table><thead><tr><th>Event</th><th>Questions</th><th>Assigned Members</th><th>Expected Answers</th><th>Answered</th><th>Members Responded</th><th>Completion</th></tr></thead><tbody>${eventRows.length ? eventRows.map(row => `<tr><td><strong>${esc(row.activity.name)}</strong></td><td>${row.questions}</td><td>${row.assigned}</td><td>${row.expected}</td><td>${row.answered}</td><td>${row.members}</td><td><span class="badge ${row.completion === 100 ? 'badge-success' : row.completion ? 'badge-warning' : 'badge-secondary'}">${row.completion}%</span></td></tr>`).join('') : `<tr><td colspan="7">${emptyState('📊', 'No data events found', '')}</td></tr>`}</tbody></table></div></div>
+    <div class="card"><div class="card-header"><div><h3>Questionnaire-wise Analytics</h3><span class="f-12" style="color:#6b7280">${esc(selectedLabel)}</span></div><select id="dataReportQuestion" onchange="refreshDataCollectionReport()"><option value="">All Questionnaires</option>${questionnaireOptions}</select></div><div class="card-body table-wrapper"><table style="min-width:900px"><thead><tr><th>Event</th><th>Questionnaire</th><th>Answer type</th><th>Responses</th><th>Blank</th><th>Answer Distribution</th><th>Count</th></tr></thead><tbody>${questionRows.length ? questionRows.flatMap(row => { const distributions = answerRows(row.counts); return distributions.length ? distributions.map(distribution => `<tr><td>${esc(row.activity.name)}</td><td><strong>${esc(row.form.questionnaire || '—')}</strong></td><td>${esc(row.control)}</td><td>${row.answered}</td><td>${Math.max(0, row.total - row.answered)}</td><td>${esc(distribution.answer)}</td><td><strong>${distribution.count}</strong></td></tr>`) : [`<tr><td>${esc(row.activity.name)}</td><td><strong>${esc(row.form.questionnaire || '—')}</strong></td><td>${esc(row.control)}</td><td>${row.answered}</td><td>${Math.max(0, row.total - row.answered)}</td><td>No answers yet</td><td>0</td></tr>`]; }).join('') : `<tr><td colspan="7">${emptyState('📋', 'No questionnaires configured', '')}</td></tr>`}</tbody></table></div></div>`;
+}
+
+function refreshDataCollectionReport() {
+  const container = document.getElementById('admin-data-report');
+  if (container) container.innerHTML = buildDataCollectionReport(val('dataReportEvent'), val('dataReportQuestion'));
+}
+
+async function renderAdminDataReport() {
+  const el = document.getElementById('admin-data-report');
+  const siteId = currentUser.site_id;
+  if (!siteId) { el.innerHTML = noSiteMsg(); return; }
+  setLoading(el);
+  try {
+    const dataTypeId = await getEventTypeId('data');
+    const { data: activities, error: activitiesError } = await supa.from('activities').select('id, name, type').eq('site_id', siteId).eq('type', dataTypeId).order('name');
+    if (activitiesError) throw activitiesError;
+    const activityIds = (activities || []).map(activity => activity.id);
+    const [{ data: forms, error: formsError }, { data: assignments, error: assignmentsError }, { data: records, error: recordsError }] = await Promise.all([
+      activityIds.length ? supa.from('data_forms').select('id, event_id, questionnaire, answer, disp_order').in('event_id', activityIds).order('disp_order') : Promise.resolve({ data: [] }),
+      activityIds.length ? supa.from('activity_members').select('activity_id, member_id').in('activity_id', activityIds) : Promise.resolve({ data: [] }),
+      activityIds.length ? supa.from('data_records').select('id, activity_id, qustion_id, answer, control_type, member_id').in('activity_id', activityIds) : Promise.resolve({ data: [] }),
+    ]);
+    if (formsError || assignmentsError || recordsError) throw formsError || assignmentsError || recordsError;
+    window._dataCollectionReport = { activities: activities || [], forms: forms || [], assignments: assignments || [], records: records || [] };
+    el.innerHTML = buildDataCollectionReport();
+  } catch (err) { el.innerHTML = errHTML(err.message); }
+}
 
 async function renderAdminReports() {
   const el = document.getElementById('admin-reports');

@@ -3800,14 +3800,17 @@ async function showEditFeeRecord(recordId, targetAmt, navTarget = 'admin-fees') 
   // Prefer the record's own saved target_amount over the activity default
   const target = parseFloat(r.target_amount || targetAmt || r.activity?.target_amount || 0);
   const grey   = 'background:#f3f4f6;color:#6b7280';
-  showModal(`Edit Payment — ${esc(r.activity?.name || '')}`, `
+  showModal(`Edit Payment — ${r.activity?.name || ''}`, `
     <div class="form-group"><label>Member</label>
       <input type="text" value="${esc(r.member?.name || '—')}" disabled style="${grey}">
     </div>
-    <div class="form-group"><label>Total Paid Amount ($)</label>
+    <div class="form-group"><label>Balance Payable Amount ($)</label>
       <input id="mPaidAmount" type="number" min="0.01" step="0.01"
         value="${parseFloat(r.amount || 0).toFixed(2)}" placeholder="0.00">
     </div>
+    ${target > 0 ? `<div class="form-group"><label>Total Paid Amount ($)</label>
+      <input type="text" value="₹${totalPaid.toFixed(2)}" disabled style="${grey}">
+    </div>` : ''}
     <div class="form-group"><label>Target Amount ($)</label>
       <input id="mTargetAmount" type="number" min="0.01" step="0.01"
         value="${target > 0 ? target : ''}" placeholder="0.00"

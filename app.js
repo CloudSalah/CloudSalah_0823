@@ -218,25 +218,48 @@ function renderSidebar() {
       return;
     }
 
-    const showFee      = !rd || rd.fee_collection;
-    const showData     = !rd || rd.data_collection;
-    const showEvents   = rd?.manage_events;
-    const showExpenses = rd?.expenses;
-    const showMembers  = rd?.create_members;
-    const showDeps     = rd?.create_dependents;
-    const showUsers    = rd?.create_users;
+    const hasModulePermissions = Object.keys(rd?.module_permissions || {}).length > 0;
+    const canAccess = key => !rd || (hasModulePermissions ? Boolean(rd.module_permissions[key]) : roleModuleEnabled(rd, key));
+    const showFee      = canAccess('user-fees');
+    const showData     = canAccess('user-data');
+    const showEvents   = canAccess('user-events');
+    const showExpenses = canAccess('user-expenses');
+    const showMembers  = canAccess('admin-members');
+    const showDeps     = canAccess('admin-dependents');
+    const showUsers    = canAccess('admin-users');
+    const showApprovals = canAccess('admin-approvals');
+    const showActivities = canAccess('admin-activities');
+    const showRevenues = canAccess('admin-revenues');
+    const showAdminFees = canAccess('admin-fees');
+    const showDonations = canAccess('admin-donations');
+    const showAdminData = canAccess('admin-data');
+    const showReports = ['admin-reports', 'admin-data-report', 'admin-association-report', 'admin-expense-report', 'admin-balance-sheet'].some(canAccess);
     nav.innerHTML = `
       <div class="nav-section">Overview</div>
-      <div class="nav-item" data-panel="user-dashboard" onclick="navigate('user-dashboard')"><span class="nav-icon">🏠</span>Dashboard</div>
-      ${(showMembers || showDeps || showUsers) ? `<div class="nav-section">Management</div>` : ''}
+      ${canAccess('user-dashboard') || canAccess('admin-dashboard') ? `<div class="nav-item" data-panel="${canAccess('admin-dashboard') ? 'admin-dashboard' : 'user-dashboard'}" onclick="navigate('${canAccess('admin-dashboard') ? 'admin-dashboard' : 'user-dashboard'}')"><span class="nav-icon">🏠</span>Dashboard</div>` : ''}
+      ${(showMembers || showDeps || showUsers || showApprovals || showActivities) ? `<div class="nav-section">Management</div>` : ''}
       ${showUsers   ? `<div class="nav-item" data-panel="admin-users"      onclick="navigate('admin-users')"><span class="nav-icon">👥</span>Profile Users</div>` : ''}
       ${showMembers ? `<div class="nav-item" data-panel="admin-members"    onclick="navigate('admin-members')"><span class="nav-icon">👨‍👩‍👧‍👦</span>Members</div>` : ''}
       ${showDeps    ? `<div class="nav-item" data-panel="admin-dependents" onclick="navigate('admin-dependents')"><span class="nav-icon">👶</span>Dependents</div>` : ''}
+      ${showApprovals ? `<div class="nav-item" data-panel="admin-approvals" onclick="navigate('admin-approvals')"><span class="nav-icon">✅</span>Approvals</div>` : ''}
+      ${showActivities ? `<div class="nav-item" data-panel="admin-activities" onclick="navigate('admin-activities')"><span class="nav-icon">📋</span>Manage Events</div>` : ''}
+      ${(showAdminFees || showDonations || showExpenses || showRevenues) ? '<div class="nav-section">Finance</div>' : ''}
+      ${showAdminFees ? `<div class="nav-item" data-panel="admin-fees" onclick="navigate('admin-fees')"><span class="nav-icon">💰</span>Payment Collections</div>` : ''}
+      ${showDonations ? `<div class="nav-item" data-panel="admin-donations" onclick="navigate('admin-donations')"><span class="nav-icon">🤲</span>Donations</div>` : ''}
+      ${showExpenses ? `<div class="nav-item" data-panel="admin-expenses" onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>` : ''}
+      ${showRevenues ? `<div class="nav-item" data-panel="admin-revenues" onclick="navigate('admin-revenues')"><span class="nav-icon">📈</span>Revenue</div>` : ''}
+      ${showAdminData ? `<div class="nav-section">Collections</div><div class="nav-item" data-panel="admin-data" onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>` : ''}
+      ${showReports ? `<div class="nav-section">Reports</div>` : ''}
+      ${canAccess('admin-reports') ? `<div class="nav-item" data-panel="admin-reports" onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>` : ''}
+      ${canAccess('admin-data-report') ? `<div class="nav-item" data-panel="admin-data-report" onclick="navigate('admin-data-report')"><span class="nav-icon">📁</span>Data Collection Report</div>` : ''}
+      ${canAccess('admin-association-report') ? `<div class="nav-item" data-panel="admin-association-report" onclick="navigate('admin-association-report')"><span class="nav-icon">📋</span>Association Report</div>` : ''}
+      ${canAccess('admin-expense-report') ? `<div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>` : ''}
+      ${canAccess('admin-balance-sheet') ? `<div class="nav-item" data-panel="admin-balance-sheet" onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>` : ''}
       <div class="nav-section">My Work</div>
       ${showFee    ? `<div class="nav-item" data-panel="user-fees"    onclick="navigate('user-fees')"><span class="nav-icon">💰</span>Payment Collections</div>` : ''}
       ${showFee    ? `<div class="nav-item" data-panel="user-donations" onclick="navigate('user-donations')"><span class="nav-icon">🤲</span>Donations</div>` : ''}
       ${showData   ? `<div class="nav-item" data-panel="user-data"    onclick="navigate('user-data')"><span class="nav-icon">📁</span>Data Collection</div>` : ''}
-      <div class="nav-item" data-panel="user-history" onclick="navigate('user-history')"><span class="nav-icon">🕑</span>My History</div>
+      ${canAccess('user-history') ? `<div class="nav-item" data-panel="user-history" onclick="navigate('user-history')"><span class="nav-icon">🕑</span>My History</div>` : ''}
       ${showEvents   ? `<div class="nav-item" data-panel="user-events"  onclick="navigate('user-events')"><span class="nav-icon">📋</span>Manage Events</div>` : ''}
       ${showExpenses ? `<div class="nav-item" data-panel="user-expenses" onclick="navigate('user-expenses')"><span class="nav-icon">💸</span>Expenses</div>` : ''}`;
   }
@@ -1565,11 +1588,57 @@ function permBadge(val) {
     : '<span class="badge badge-secondary">— No</span>';
 }
 
+const ROLE_PERMISSION_MODULES = [
+  { group: 'Site Admin Modules', modules: [
+    ['admin-dashboard', '📊', 'Dashboard'], ['admin-users', '👥', 'Profile Users'],
+    ['admin-members', '👨‍👩‍👧‍👦', 'Members'], ['admin-dependents', '👶', 'Dependents'],
+    ['admin-approvals', '✅', 'Approvals'], ['admin-activities', '📋', 'Manage Events'],
+    ['admin-fees', '💰', 'Payment Collections'], ['admin-donations', '🤲', 'Donations'],
+    ['admin-expenses', '💸', 'Expenses'], ['admin-revenues', '📈', 'Revenue'],
+    ['admin-data', '📁', 'Data Records'], ['admin-reports', '📈', 'Collection Report'],
+    ['admin-data-report', '📁', 'Data Collection Report'], ['admin-association-report', '📋', 'Association Report'],
+    ['admin-expense-report', '📊', 'Expense Report'], ['admin-balance-sheet', '⚖️', 'Balance Sheet'],
+  ] },
+  { group: 'Range Admin Modules', modules: [
+    ['rangeadmin-dashboard', '📊', 'Dashboard'], ['ra-sites', '🏘️', 'Sites'], ['ra-admins', '👤', 'Site Admins'],
+  ] },
+  { group: 'Field User Modules', modules: [
+    ['user-dashboard', '🏠', 'Dashboard'], ['user-fees', '💰', 'Payment Collections'],
+    ['user-donations', '🤲', 'Donations'], ['user-data', '📁', 'Data Collection'],
+    ['user-history', '🕑', 'My History'], ['user-events', '📋', 'Manage Events'], ['user-expenses', '💸', 'Expenses'],
+  ] },
+];
+
+function selectedRoleModules() {
+  return Object.fromEntries([...document.querySelectorAll('[data-role-module]:checked')].map(input => [input.value, true]));
+}
+
+function roleModuleEnabled(role, key) {
+  if (role?.module_permissions && Object.prototype.hasOwnProperty.call(role.module_permissions, key)) return role.module_permissions[key];
+  if (key.startsWith('admin-') && role?.site_admin_access) return true;
+  const legacyPermissions = {
+    'admin-users': role?.create_users, 'admin-members': role?.create_members, 'admin-dependents': role?.create_dependents,
+    'admin-reports': role?.view_reports, 'user-fees': role?.fee_collection, 'user-donations': role?.fee_collection,
+    'user-data': role?.data_collection, 'user-events': role?.manage_events, 'user-expenses': role?.expenses,
+    'user-dashboard': true, 'user-history': true,
+  };
+  return legacyPermissions[key] || false;
+}
+
+function roleModuleSummary(role) {
+  const modules = ROLE_PERMISSION_MODULES.flatMap(({ modules: groupModules }) => groupModules)
+    .filter(([key]) => roleModuleEnabled(role, key))
+    .map(([, , label]) => label);
+  return modules.length
+    ? `<span class="f-12">${modules.map(esc).join(', ')}</span>`
+    : '<span class="f-12" style="color:var(--text-light)">No modules selected</span>';
+}
+
 function roleFormHTML(r) {
   const chk = v => v ? 'checked' : '';
   const perm = (id, icon, label, val) =>
     `<label style="display:flex;align-items:center;gap:8px;padding:10px 12px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">
-      <input type="checkbox" id="${id}" ${chk(val)}> ${icon} ${label}
+      <input type="checkbox" id="${id}" data-role-module value="${id.replace('module-', '')}" ${chk(val)}> ${icon} ${label}
     </label>`;
   return `
     <div class="form-group"><label>Role Name *</label>
@@ -1577,23 +1646,14 @@ function roleFormHTML(r) {
     </div>
     <div class="form-group">
       <label style="display:block;margin-bottom:10px">Field Permissions</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        ${perm('pFee',      '💰', 'Fee Collection',        r?.fee_collection)}
-        ${perm('pData',     '📁', 'Data Collection',       r?.data_collection)}
-        ${perm('pReports',  '📈', 'View Reports',          r?.view_reports)}
-        ${perm('pEvents',   '📋', 'Manage Events',         r?.manage_events)}
-        ${perm('pExpenses', '💸', 'Expenses',              r?.expenses)}
-        ${perm('pNoLogin',  '🚫', 'Restrict Login Access',  r?.restrict_login)}
-      </div>
-    </div>
-    <div class="form-group">
-      <label style="display:block;margin-bottom:10px">Management Access</label>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
-        ${perm('pSiteAdmin',     '🔑', 'Full Site Admin Access', r?.site_admin_access)}
-        ${perm('pCreateMembers', '👨‍👩‍👧‍👦', 'Member Creation',        r?.create_members)}
-        ${perm('pCreateDeps',    '👶', 'Dependent Creation',      r?.create_dependents)}
-        ${perm('pCreateUsers',   '👥', 'Profile User Creation',   r?.create_users)}
-      </div>
+      ${ROLE_PERMISSION_MODULES.map(({ group, modules: groupModules }) => `
+        <div style="margin:14px 0 8px;font-size:12px;font-weight:700;color:var(--text-light);text-transform:uppercase">${group}</div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${groupModules.map(([key, icon, label]) => perm(`module-${key}`, icon, label, roleModuleEnabled(r, key))).join('')}
+        </div>`).join('')}
+      <label style="display:flex;align-items:center;gap:8px;padding:10px 12px;margin-top:10px;border:1.5px solid var(--border);border-radius:8px;cursor:pointer;font-size:13px">
+        <input type="checkbox" id="pNoLogin" ${chk(r?.restrict_login)}> 🚫 Restrict Login Access
+      </label>
     </div>`;
 }
 
@@ -1619,32 +1679,16 @@ async function renderSARoles() {
               <thead>
                 <tr>
                   <th>Role Name</th>
-                  <th>Fee Collection</th>
-                  <th>Data Collection</th>
-                  <th>View Reports</th>
-                  <th>Manage Events</th>
-                  <th>Expenses</th>
+                  <th>Module Access</th>
                   <th>Restrict Login</th>
-                  <th>Site Admin Access</th>
-                  <th>Member Creation</th>
-                  <th>Dependent Creation</th>
-                  <th>User Creation</th>
                   <th>Actions</th>
                 </tr>
               </thead>
               <tbody>
                 ${roles.map(r => `<tr>
                   <td><strong>${esc(r.name)}</strong></td>
-                  <td>${permBadge(r.fee_collection)}</td>
-                  <td>${permBadge(r.data_collection)}</td>
-                  <td>${permBadge(r.view_reports)}</td>
-                  <td>${permBadge(r.manage_events)}</td>
-                  <td>${permBadge(r.expenses)}</td>
+                  <td>${roleModuleSummary(r)}</td>
                   <td>${permBadge(r.restrict_login)}</td>
-                  <td>${permBadge(r.site_admin_access)}</td>
-                  <td>${permBadge(r.create_members)}</td>
-                  <td>${permBadge(r.create_dependents)}</td>
-                  <td>${permBadge(r.create_users)}</td>
                   <td><div class="table-actions">
                     <button class="btn btn-secondary btn-sm" onclick="showEditRoleModal('${r.id}')">✏️ Edit</button>
                     <button class="btn btn-danger btn-sm"    onclick="deleteRole('${r.id}')">🗑️</button>
@@ -1663,16 +1707,17 @@ async function showAddRoleModal() {
     if (!name) return toast('Role name is required', 'error'), false;
     const { error } = await supa.from('roles').insert({
       name,
-      fee_collection:    document.getElementById('pFee')?.checked          || false,
-      data_collection:   document.getElementById('pData')?.checked         || false,
-      view_reports:      document.getElementById('pReports')?.checked      || false,
-      manage_events:     document.getElementById('pEvents')?.checked       || false,
-      expenses:          document.getElementById('pExpenses')?.checked     || false,
+      module_permissions: selectedRoleModules(),
+      fee_collection:    document.getElementById('module-user-fees')?.checked || false,
+      data_collection:   document.getElementById('module-user-data')?.checked || false,
+      view_reports:      document.getElementById('module-admin-reports')?.checked || false,
+      manage_events:     document.getElementById('module-user-events')?.checked || false,
+      expenses:          document.getElementById('module-user-expenses')?.checked || false,
       restrict_login:    document.getElementById('pNoLogin')?.checked      || false,
-      site_admin_access: document.getElementById('pSiteAdmin')?.checked    || false,
-      create_members:    document.getElementById('pCreateMembers')?.checked || false,
-      create_dependents: document.getElementById('pCreateDeps')?.checked   || false,
-      create_users:      document.getElementById('pCreateUsers')?.checked  || false,
+      site_admin_access: false,
+      create_members:    document.getElementById('module-admin-members')?.checked || false,
+      create_dependents: document.getElementById('module-admin-dependents')?.checked || false,
+      create_users:      document.getElementById('module-admin-users')?.checked || false,
     });
     if (error) return toast(error.message, 'error'), false;
     toast('Role created', 'success'); await navigate('sa-roles'); return true;
@@ -1687,16 +1732,17 @@ async function showEditRoleModal(roleId) {
     if (!name) return toast('Role name is required', 'error'), false;
     const { error } = await supa.from('roles').update({
       name,
-      fee_collection:    document.getElementById('pFee')?.checked          || false,
-      data_collection:   document.getElementById('pData')?.checked         || false,
-      view_reports:      document.getElementById('pReports')?.checked      || false,
-      manage_events:     document.getElementById('pEvents')?.checked       || false,
-      expenses:          document.getElementById('pExpenses')?.checked     || false,
+      module_permissions: selectedRoleModules(),
+      fee_collection:    document.getElementById('module-user-fees')?.checked || false,
+      data_collection:   document.getElementById('module-user-data')?.checked || false,
+      view_reports:      document.getElementById('module-admin-reports')?.checked || false,
+      manage_events:     document.getElementById('module-user-events')?.checked || false,
+      expenses:          document.getElementById('module-user-expenses')?.checked || false,
       restrict_login:    document.getElementById('pNoLogin')?.checked      || false,
-      site_admin_access: document.getElementById('pSiteAdmin')?.checked    || false,
-      create_members:    document.getElementById('pCreateMembers')?.checked || false,
-      create_dependents: document.getElementById('pCreateDeps')?.checked   || false,
-      create_users:      document.getElementById('pCreateUsers')?.checked  || false,
+      site_admin_access: false,
+      create_members:    document.getElementById('module-admin-members')?.checked || false,
+      create_dependents: document.getElementById('module-admin-dependents')?.checked || false,
+      create_users:      document.getElementById('module-admin-users')?.checked || false,
     }).eq('id', roleId);
     if (error) return toast(error.message, 'error'), false;
     toast('Role updated', 'success'); await navigate('sa-roles'); return true;

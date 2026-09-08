@@ -543,6 +543,50 @@ tbody tr:hover { background: #fafbfc; }
   box-shadow: 0 30px 80px rgba(0,0,0,.3);
   animation: modalIn .2s ease;
 }
+.modal-box.activity-modal { width: 860px; }
+.data-form-question > div:first-child > .btn-danger {
+  width: 34px; height: 34px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.data-answer-preview,
+.data-radio-preview label,
+.data-checkbox-dropdown summary {
+  border: 1px solid #d1d5db;
+  border-radius: 7px;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(15,23,42,.05);
+  transition: border-color .18s, box-shadow .18s, background .18s;
+}
+.data-answer-preview { width: 220px; max-width: 100%; min-height: 34px; padding: 7px 10px; font-size: 12px; color: #374151; box-sizing: border-box; }
+.data-control-cell { text-align: right; }
+.data-control-cell > .data-answer-preview,
+.data-control-cell > .data-radio-preview,
+.data-control-cell > .data-checkbox-dropdown { margin-left: auto; }
+.data-record-actions { display: flex; justify-content: flex-end; padding-top: 16px; }
+.data-record-notes { width: 100%; padding-top: 16px; }
+.data-record-notes label { display: block; margin-bottom: 6px; font-size: 12px; font-weight: 600; color: #374151; }
+.data-record-notes textarea { display: block; width: 100%; height: 3cm; min-height: 3cm; resize: vertical; box-sizing: border-box; }
+.data-answer-preview:hover,
+.data-radio-preview label:hover,
+.data-checkbox-dropdown summary:hover { border-color: #93c5fd; background: #f8fbff; }
+.data-answer-preview:focus,
+.data-radio-preview label:has(input:focus-visible),
+.data-checkbox-dropdown[open] summary { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px rgba(26,115,232,.12); }
+.data-radio-preview { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; width: 220px; max-width: 100%; }
+.data-radio-preview label { display: inline-flex; align-items: center; gap: 5px; padding: 7px 9px; white-space: nowrap; font-size: 12px; cursor: pointer; }
+.data-radio-preview input { accent-color: var(--primary); margin: 0; }
+.data-checkbox-dropdown { position: relative; width: 220px; max-width: 100%; }
+.data-checkbox-dropdown summary { cursor: pointer; list-style: none; min-height: 34px; padding: 8px 28px 8px 10px; font-size: 12px; position: relative; text-align: left; }
+.data-checkbox-dropdown summary::-webkit-details-marker { display: none; }
+.data-checkbox-dropdown summary::after { content: '▾'; position: absolute; right: 10px; color: #6b7280; }
+.data-checkbox-dropdown[open] summary::after { content: '▴'; }
+.data-checkbox-menu { position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 5; display: grid; gap: 7px; padding: 10px; border: 1px solid var(--border); border-radius: 7px; background: white; box-shadow: 0 8px 20px rgba(0,0,0,.14); text-align: left; }
+.data-checkbox-menu label { display: flex; align-items: center; justify-content: flex-start; gap: 6px; font-size: 12px; white-space: nowrap; text-align: left; }
+@media (max-width: 700px) {
+  .modal-box.activity-modal { width: 96vw; }
+  .activity-modal .data-form-question > div:first-child { grid-template-columns: 1fr; }
+  .data-answer-preview, .data-radio-preview, .data-checkbox-dropdown { width: 100%; }
+}
 @keyframes modalIn { from { transform: scale(.94) translateY(10px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 .modal-header {

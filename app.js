@@ -171,13 +171,14 @@ function renderSidebar() {
       <div class="nav-item" data-panel="admin-donations"  onclick="navigate('admin-donations')"><span class="nav-icon">🤲</span>Donations</div>
       <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
       <div class="nav-item" data-panel="admin-revenues"   onclick="navigate('admin-revenues')"><span class="nav-icon">📈</span>Revenue</div>
+      <div class="nav-section">Collections</div>
+      <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>
       <div class="nav-section">Reports</div>
       <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
       <div class="nav-item" data-panel="admin-association-report" onclick="navigate('admin-association-report')"><span class="nav-icon">📋</span>Association Report</div>
       <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
       <div class="nav-item" data-panel="admin-balance-sheet"  onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>
-      <div class="nav-section">Collections</div>
-      <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>`;
+      `;
   } else if (role === 'rangeadmin') {
     nav.innerHTML = `
       <div class="nav-section">Overview</div>
@@ -204,12 +205,13 @@ function renderSidebar() {
         <div class="nav-item" data-panel="admin-donations"  onclick="navigate('admin-donations')"><span class="nav-icon">🤲</span>Donations</div>
         <div class="nav-item" data-panel="admin-expenses"   onclick="navigate('admin-expenses')"><span class="nav-icon">💸</span>Expenses</div>
         <div class="nav-item" data-panel="admin-revenues"   onclick="navigate('admin-revenues')"><span class="nav-icon">📈</span>Revenue</div>
+        <div class="nav-section">Collections</div>
+        <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>
         <div class="nav-section">Reports</div>
         <div class="nav-item" data-panel="admin-reports"    onclick="navigate('admin-reports')"><span class="nav-icon">📈</span>Collection Report</div>
         <div class="nav-item" data-panel="admin-expense-report" onclick="navigate('admin-expense-report')"><span class="nav-icon">📊</span>Expense Report</div>
         <div class="nav-item" data-panel="admin-balance-sheet"  onclick="navigate('admin-balance-sheet')"><span class="nav-icon">⚖️</span>Balance Sheet</div>
-        <div class="nav-section">Collections</div>
-        <div class="nav-item" data-panel="admin-data"       onclick="navigate('admin-data')"><span class="nav-icon">📁</span>Data Records</div>`;
+        `;
       return;
     }
 
@@ -2921,7 +2923,45 @@ function associationSetupHTML(members = [], dependents = [], designations = [], 
   </div>`;
 }
 
-function activityFormHTML(a, eventTypes = null, associationData = {}) {
+function dataFormQuestionHTML(question = {}, index = 0) {
+  let answerConfig = {};
+  try { answerConfig = question.answer ? JSON.parse(question.answer) : {}; } catch (_) { answerConfig = {}; }
+  const type = answerConfig.type || 'text';
+  const options = Array.isArray(answerConfig.options) ? answerConfig.options.join('\n') : '';
+  const hasOptions = ['dropdown', 'radio', 'checkbox'].includes(type);
+  const rowColumns = hasOptions
+    ? 'minmax(0,1fr) minmax(180px,1fr) minmax(220px,1fr) 34px'
+    : 'minmax(0,1fr) minmax(180px,2fr) 0 34px';
+  return `<div class="data-form-question" data-question-index="${index}" style="border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:10px;background:#fafafa">
+    <div style="display:grid;grid-template-columns:${rowColumns};gap:10px;align-items:end">
+      <div class="form-group" style="margin:0"><label>Question ${index + 1} *</label><input class="data-form-question-text" type="text" value="${esc(question.questionnaire || '')}" placeholder="e.g., What is your occupation?"></div>
+      <div class="form-group" style="margin:0"><label>Answer Type *</label><select class="data-form-answer-type" onchange="toggleDataFormOptions(this)">
+        <option value="text" ${type === 'text' ? 'selected' : ''}>Text box</option>
+        <option value="dropdown" ${type === 'dropdown' ? 'selected' : ''}>Dropdown</option>
+        <option value="radio" ${type === 'radio' ? 'selected' : ''}>Radio buttons</option>
+        <option value="checkbox" ${type === 'checkbox' ? 'selected' : ''}>Checkbox dropdown</option>
+      </select></div>
+      <div class="data-form-options" style="display:${['dropdown', 'radio', 'checkbox'].includes(type) ? '' : 'none'};margin:0">
+        <label style="font-size:12px;font-weight:600">Definitive values</label>
+        <textarea class="data-form-options-input" rows="2" placeholder="One value per line">${esc(options)}</textarea>
+      </div>
+      <button type="button" class="btn btn-danger btn-sm" onclick="removeDataFormQuestion(this)" title="Remove question">🗑️</button>
+    </div>
+  </div>`;
+}
+
+function dataFormSetupHTML(records = []) {
+  const questions = records.length ? records : [{}];
+  return `<div id="dataFormSetupFields" style="display:none">
+    <div class="form-group" style="margin-bottom:8px"><label>Data Collection Questions</label>
+      <div class="f-12" style="color:#6b7280">Configure up to 20 questions for this activity. Select a control type and add definitive values for selectable controls.</div>
+    </div>
+    <div id="dataFormQuestions">${questions.map((question, index) => dataFormQuestionHTML(question, index)).join('')}</div>
+    <button type="button" class="btn btn-secondary btn-sm" onclick="addDataFormQuestion()">+ Add Question</button>
+  </div>`;
+}
+
+function activityFormHTML(a, eventTypes = null, associationData = {}, dataFormRecords = []) {
   const isFee = eventTypes
     ? (a ? [1, 4].includes(Number(a.type)) : true)
     : String(a?.type || '').toLowerCase() === 'fee';
@@ -2942,6 +2982,7 @@ function activityFormHTML(a, eventTypes = null, associationData = {}) {
     <div id="feeAllowEditField" class="form-group form-group-checkbox" ${!isFee ? 'style="display:none"' : ''}>
       <label class="checkbox-label" style="display:inline-flex;align-items:center;gap:8px;cursor:pointer;margin:0;font-size:13px;font-weight:500;user-select:none"><input type="checkbox" id="mAllowTargetEdit" style="width:16px;height:16px;min-width:16px;margin:0;cursor:pointer" ${a?.allow_target_edit ? 'checked' : ''}> Allow target amount update in Payment Edit</label></div>
     ${associationSetupHTML(associationData.members, associationData.dependents, associationData.designations, associationData.records)}
+    ${dataFormSetupHTML(dataFormRecords)}
     <div class="form-group"><label>Due Date</label>
       <input id="mActDue" type="date" value="${a && a.due_date ? a.due_date : ''}"></div>
     <div class="form-group"><label>Description</label>
@@ -2963,6 +3004,8 @@ async function showAddActivityModal() {
     const selectedEventType = eventTypes.find(eventType => Number(eventType.id) === typeId);
     if (!typeId) return toast('Invalid activity type selected', 'error'), false;
     if (!name) return toast('Activity name is required', 'error'), false;
+    const dataForms = collectDataFormQuestions(typeId);
+    if (dataForms === false) return false;
     const { data: activity, error } = await supa.from('activities').insert({
       name, type: typeId, site_id: currentUser.site_id,
       is_donation_event: Number(typeId) === 3,
@@ -2992,27 +3035,38 @@ async function showAddActivityModal() {
         return toast(associationError.message, 'error'), false;
       }
     }
+    if (typeId === 2 && dataForms.length) {
+      const { error: dataFormError } = await supa.from('data_forms').insert(dataForms.map(form => ({ ...form, event_id: activity.id, event_type_id: typeId })));
+      if (dataFormError) {
+        await supa.from('activities').delete().eq('id', activity.id);
+        return toast(dataFormError.message, 'error'), false;
+      }
+    }
     toast('Activity created', 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
-  });
+  }, 'activity-modal');
 }
 
 async function showEditActivityModal(actId) {
-  const [{ data: a }, { data: eventTypes, error: eventTypesError }, { data: members, error: membersError }, { data: dependents, error: dependentsError }, { data: designations, error: designationsError }, { data: associationRecords, error: associationRecordsError }] = await Promise.all([
+  const [{ data: a }, { data: eventTypes, error: eventTypesError }, { data: members, error: membersError }, { data: dependents, error: dependentsError }, { data: designations, error: designationsError }, { data: associationRecords, error: associationRecordsError }, { data: dataFormRecords, error: dataFormsError }] = await Promise.all([
     supa.from('activities').select('*').eq('id', actId).single(),
     supa.from('event_types').select('id, type').order('id'),
     supa.from('members').select('id, name').eq('site_id', currentUser.site_id).eq('is_dependant', false).order('name'),
     supa.from('members').select('id, name').eq('site_id', currentUser.site_id).eq('is_dependant', true).order('name'),
     supa.from('lookup_designation').select('id, designation').order('order'),
     supa.from('association_members').select('association_member_id, designation_id').eq('activity_id', actId).order('created_at'),
+    supa.from('data_forms').select('id, questionnaire, answer, event_type_id, disp_order').eq('event_id', actId).order('disp_order', { ascending: true }),
   ]);
   if (!a) return;
   if (eventTypesError || membersError || dependentsError || designationsError) return toast((eventTypesError || membersError || dependentsError || designationsError).message, 'error');
   if (associationRecordsError) toast('Association members could not be loaded: ' + associationRecordsError.message, 'error');
-  showModal('Edit Activity', activityFormHTML(a, eventTypes || [], { members: members || [], dependents: dependents || [], designations: designations || [], records: associationRecords || [] }), async () => {
+  if (dataFormsError && Number(a?.type) === 2) return toast('Data collection questions could not be loaded: ' + dataFormsError.message, 'error');
+  showModal('Edit Activity', activityFormHTML(a, eventTypes || [], { members: members || [], dependents: dependents || [], designations: designations || [], records: associationRecords || [] }, dataFormRecords || []), async () => {
     const name = val('mActName'), typeId = Number(val('mActType'));
     const isFee = [1, 4].includes(typeId);
     if (!name) return toast('Activity name is required', 'error'), false;
     if (!typeId) return toast('Invalid activity type selected', 'error'), false;
+    const dataForms = collectDataFormQuestions(typeId);
+    if (dataForms === false) return false;
     const { error } = await supa.from('activities').update({
       name, type: typeId,
       target_amount:    isFee && val('mActAmount') ? parseFloat(val('mActAmount')) : null,
@@ -3039,8 +3093,14 @@ async function showEditActivityModal(actId) {
       const { error: associationDeleteError } = await supa.from('association_members').delete().eq('activity_id', actId);
       if (associationDeleteError) return toast(associationDeleteError.message, 'error'), false;
     }
+    const { error: dataFormDeleteError } = await supa.from('data_forms').delete().eq('event_id', actId);
+    if (dataFormDeleteError) return toast(dataFormDeleteError.message, 'error'), false;
+    if (typeId === 2 && dataForms.length) {
+      const { error: dataFormInsertError } = await supa.from('data_forms').insert(dataForms.map(form => ({ ...form, event_id: actId, event_type_id: typeId })));
+      if (dataFormInsertError) return toast(dataFormInsertError.message, 'error'), false;
+    }
     toast('Activity updated', 'success'); await navigate(window._actNavTarget || 'admin-activities'); return true;
-  });
+  }, 'activity-modal');
   toggleActivityTypeFields();
 }
 
@@ -3053,6 +3113,54 @@ function toggleActivityTypeFields() {
   if (editField) editField.style.display = isFee ? '' : 'none';
   const associationFields = document.getElementById('associationSetupFields');
   if (associationFields) associationFields.style.display = Number(type?.value) === 4 ? '' : 'none';
+  const dataFormFields = document.getElementById('dataFormSetupFields');
+  if (dataFormFields) dataFormFields.style.display = Number(type?.value) === 2 ? '' : 'none';
+}
+
+function toggleDataFormOptions(select) {
+  const row = select.closest('.data-form-question');
+  const options = row?.querySelector('.data-form-options');
+  const showOptions = ['dropdown', 'radio', 'checkbox'].includes(select.value);
+  if (options) options.style.display = showOptions ? '' : 'none';
+  const grid = row?.querySelector(':scope > div:first-child');
+  if (grid) grid.style.gridTemplateColumns = showOptions
+    ? 'minmax(0,1fr) minmax(180px,1fr) minmax(220px,1fr) 34px'
+    : 'minmax(0,1fr) minmax(180px,2fr) 0 34px';
+}
+
+function addDataFormQuestion() {
+  const container = document.getElementById('dataFormQuestions');
+  if (!container) return;
+  const count = container.querySelectorAll('.data-form-question').length;
+  if (count >= 20) return toast('You can add up to 20 questions', 'warning');
+  container.insertAdjacentHTML('beforeend', dataFormQuestionHTML({}, count));
+}
+
+function removeDataFormQuestion(button) {
+  const container = document.getElementById('dataFormQuestions');
+  const row = button.closest('.data-form-question');
+  if (!container || !row) return;
+  row.remove();
+  container.querySelectorAll('.data-form-question').forEach((question, index) => {
+    question.dataset.questionIndex = index;
+    const label = question.querySelector('label');
+    if (label) label.textContent = `Question ${index + 1} *`;
+  });
+}
+
+function collectDataFormQuestions(typeId) {
+  if (Number(typeId) !== 2) return [];
+  const rows = [...document.querySelectorAll('#dataFormQuestions .data-form-question')];
+  const forms = [];
+  for (const [index, row] of rows.entries()) {
+    const questionnaire = row.querySelector('.data-form-question-text')?.value.trim() || '';
+    const type = row.querySelector('.data-form-answer-type')?.value || 'text';
+    const options = (row.querySelector('.data-form-options-input')?.value || '').split('\n').map(value => value.trim()).filter(Boolean);
+    if (!questionnaire) return toast(`Question ${index + 1} is required`, 'error'), false;
+    if (['dropdown', 'radio', 'checkbox'].includes(type) && !options.length) return toast(`Add definitive values for question ${index + 1}`, 'error'), false;
+    forms.push({ questionnaire, answer: JSON.stringify({ type, options }), disp_order: index + 1 });
+  }
+  return forms;
 }
 
 function toggleFeeField() {
@@ -3645,6 +3753,38 @@ function deleteFeeRecord(id) {
 //  SITE ADMIN — DATA RECORDS
 // ============================================================
 
+function dataFormAnswerControlHTML(form, rowIndex, savedAnswer = '') {
+  let config = {};
+  try { config = form.answer ? JSON.parse(form.answer) : {}; } catch (_) { config = {}; }
+  const options = Array.isArray(config.options) ? config.options : [];
+  const optionHTML = options.map(option => `<option value="${esc(option)}">${esc(option)}</option>`).join('');
+  const questionId = form.id || `question-${rowIndex}`;
+  if (config.type === 'dropdown') return `<select class="data-answer-preview" data-question-id="${esc(questionId)}"><option value="">Select...</option>${options.map(option => `<option value="${esc(option)}" ${String(savedAnswer) === String(option) ? 'selected' : ''}>${esc(option)}</option>`).join('')}</select>`;
+  if (config.type === 'checkbox') return `<details class="data-checkbox-dropdown">
+    <summary>${esc(savedAnswer || 'Select values')}</summary>
+    <div class="data-checkbox-menu" data-question-id="${esc(questionId)}">${options.map(option => `<label><input type="checkbox" value="${esc(option)}" ${savedAnswer.split(',').map(value => value.trim()).includes(option) ? 'checked' : ''} onchange="updateDataCheckboxSummary(this)"> ${esc(option)}</label>`).join('')}</div>
+  </details>`;
+  if (config.type === 'radio') return `<div class="data-radio-preview" data-question-id="${esc(questionId)}">${options.map(option => `<label><input type="radio" name="data-preview-${esc(questionId)}" value="${esc(option)}" ${String(savedAnswer) === String(option) ? 'checked' : ''}> ${esc(option)}</label>`).join('')}</div>`;
+  return `<input class="data-answer-preview" type="text" placeholder="Text answer" value="${esc(savedAnswer)}" data-question-id="${esc(questionId)}">`;
+}
+
+function dataFormControlType(form) {
+  let config = {};
+  try { config = form.answer ? JSON.parse(form.answer) : {}; } catch (_) { config = {}; }
+  return config.type === 'dropdown' ? 'Dropdown'
+    : config.type === 'checkbox' ? 'Dropdown checkbox'
+    : config.type === 'radio' ? 'Radio button'
+    : 'Text box';
+}
+
+function updateDataCheckboxSummary(input) {
+  const dropdown = input.closest('.data-checkbox-dropdown');
+  const summary = dropdown?.querySelector('summary');
+  if (!summary) return;
+  const selected = [...dropdown.querySelectorAll('input[type="checkbox"]:checked')].map(option => option.value);
+  summary.firstChild.textContent = selected.length ? selected.join(', ') : 'Select values';
+}
+
 async function renderAdminData() {
   const el = document.getElementById('admin-data');
   const siteId = currentUser.site_id;
@@ -3652,48 +3792,139 @@ async function renderAdminData() {
   setLoading(el);
   try {
     const dataTypeId = await getEventTypeId('data');
-    const [{ data: records, error }, { data: dataActs }] = await Promise.all([
-      supa.from('data_records')
-        .select('id, person_name, address, phone, date, activity_id, activity:activities!activity_id(id,name), collector:profiles!collected_by(name)')
-        .eq('site_id', siteId).order('date', { ascending: false }),
-      supa.from('activities').select('id, name').eq('site_id', siteId).eq('type', dataTypeId),
+    const { data: dataActs, error: activitiesError } = await supa.from('activities')
+      .select('id, name, type').eq('site_id', siteId).eq('type', dataTypeId);
+    if (activitiesError) throw activitiesError;
+    const dataActivityIds = (dataActs || []).map(activity => activity.id);
+    const [{ data: assignments, error: assignmentsError }, { data: formDefinitions, error: formsError }] = await Promise.all([
+      dataActivityIds.length
+        ? supa.from('activity_members').select('activity_id, member_id').in('activity_id', dataActivityIds)
+        : Promise.resolve({ data: [], error: null }),
+      dataActivityIds.length
+        ? supa.from('data_forms').select('id, event_id, questionnaire, answer, disp_order').in('event_id', dataActivityIds).order('disp_order', { ascending: true })
+        : Promise.resolve({ data: [], error: null }),
     ]);
-    if (error) throw error;
+    if (assignmentsError || formsError) throw assignmentsError || formsError;
+    const assignedMemberIds = [...new Set((assignments || []).map(assignment => assignment.member_id))];
+    const { data: assignedMembers, error: membersError } = assignedMemberIds.length
+      ? await supa.from('members').select('id, name').in('id', assignedMemberIds).order('name')
+      : { data: [], error: null };
+    if (membersError) throw membersError;
+    const memberMap = Object.fromEntries((assignedMembers || []).map(member => [member.id, member.name]));
+    const assignmentsByActivity = {};
+    (assignments || []).forEach(assignment => (assignmentsByActivity[assignment.activity_id] ||= []).push(assignment.member_id));
+    const formsByActivity = {};
+    (formDefinitions || []).forEach((form, index) => (formsByActivity[form.event_id] ||= []).push({ ...form, _index: index }));
+    const setupRows = [...(dataActs || [])].sort((left, right) => left.name.localeCompare(right.name)).flatMap(activity => {
+      const memberNames = (assignmentsByActivity[activity.id] || []).map(memberId => memberMap[memberId]).filter(Boolean).sort((left, right) => left.localeCompare(right));
+      const forms = formsByActivity[activity.id] || [];
+      const rows = forms.length ? [...forms].sort((left, right) => (left.disp_order ?? 9999) - (right.disp_order ?? 9999) || left._index - right._index) : [{ questionnaire: '', answer: '', _index: 0 }];
+      return (memberNames.length ? memberNames : ['—']).flatMap(memberName => rows.map(form => ({
+        activity,
+        memberName,
+        memberId: (assignments || []).find(assignment => assignment.activity_id === activity.id && memberMap[assignment.member_id] === memberName)?.member_id || null,
+        form,
+      })));
+    });
+    window._dataSetupRows = setupRows;
 
     el.innerHTML = `
       <div class="panel-header">
         <div><h2>Data Records</h2><p>All data collection records for your site</p></div>
         <div class="panel-header-actions"><button class="btn btn-secondary" onclick="exportDataCSV()">⬇️ Export CSV</button></div>
       </div>
-      <div class="card">
+      <div class="card" style="margin-bottom:20px">
         <div class="card-body">
           <div class="filters">
-            <input  class="filter-grow" id="dataSearch" type="text" placeholder="🔍 Search..." oninput="filterTable('dataTable','dataSearch','dataActF')">
-            <select id="dataActF" onchange="filterTable('dataTable','dataSearch','dataActF')">
-              <option value="">All Activities</option>
+            <select id="dataEventSelect" onchange="updateDataMemberFilter()">
+              <option value="">Select Event</option>
               ${(dataActs || []).map(a => `<option value="${a.id}">${esc(a.name)}</option>`).join('')}
             </select>
-          </div>
-          <div class="table-wrapper">
-            <table id="dataTable">
-              <thead><tr><th>Person Name</th><th>Address</th><th>Phone</th><th>Activity</th><th>Collector</th><th>Date</th><th>Del</th></tr></thead>
-              <tbody>
-                ${!(records || []).length ? `<tr><td colspan="7">${emptyState('📁', 'No data records yet', '')}</td></tr>` :
-                  records.map(r => `<tr data-act="${r.activity_id || ''}">
-                    <td><strong>${esc(r.person_name)}</strong></td>
-                    <td>${esc(r.address || '—')}</td>
-                    <td>${esc(r.phone || '—')}</td>
-                    <td>${r.activity?.name ? esc(r.activity.name) : '—'}</td>
-                    <td>${r.collector?.name ? esc(r.collector.name) : '—'}</td>
-                    <td>${fmtDate(r.date)}</td>
-                    <td><button class="btn btn-danger btn-sm" onclick="deleteDataRecord('${r.id}')">🗑️</button></td>
-                  </tr>`).join('')}
-              </tbody>
-            </table>
+            <select id="dataMemberSelect" disabled>
+              <option value="">Select Member</option>
+            </select>
+            <button class="btn btn-primary" type="button" onclick="showSelectedDataQuestionnaire()">Go</button>
           </div>
         </div>
-      </div>`;
+      </div>
+      <div class="card">
+        <div class="card-body table-wrapper">
+          <div id="dataSetupResults">${!setupRows.length ? emptyState('📋', 'No data collection setup found', 'Create questions and assign members to a data activity') : emptyState('📋', 'Select an event and member', 'Choose both above, then click Go to view the questionnaires')}</div>
+        </div>
+      </div>
+      `;
   } catch (err) { el.innerHTML = errHTML(err.message); }
+}
+
+function updateDataMemberFilter() {
+  const eventId = val('dataEventSelect');
+  const memberSelect = document.getElementById('dataMemberSelect');
+  if (!memberSelect) return;
+  const memberNames = [...new Set((window._dataSetupRows || [])
+    .filter(row => row.activity.id === eventId && row.memberName !== '—')
+    .map(row => row.memberName))].sort((left, right) => left.localeCompare(right));
+  memberSelect.innerHTML = '<option value="">Select Member</option>' + memberNames.map(name => `<option value="${esc(name)}">${esc(name)}</option>`).join('');
+  memberSelect.disabled = !eventId || !memberNames.length;
+  const results = document.getElementById('dataSetupResults');
+  if (results) results.innerHTML = emptyState('📋', 'Select an event and member', 'Choose both above, then click Go to view the questionnaires');
+}
+
+async function showSelectedDataQuestionnaire() {
+  const eventId = val('dataEventSelect');
+  const memberName = val('dataMemberSelect');
+  if (!eventId) return toast('Select an event first', 'warning');
+  if (!memberName) return toast('Select a member first', 'warning');
+  const rows = (window._dataSetupRows || []).filter(row => row.activity.id === eventId && row.memberName === memberName);
+  const results = document.getElementById('dataSetupResults');
+  if (!results) return;
+  if (!rows.length) return results.innerHTML = emptyState('📋', 'No questionnaires found', 'This member has no configured questions for the selected event');
+  const questionIds = rows.map(row => row.form.id).filter(Boolean);
+  const { data: existingRecords, error: recordsError } = await supa.from('data_records')
+    .select('id, qustion_id, answer, notes').eq('activity_id', eventId).eq('member_id', rows[0].memberId).in('qustion_id', questionIds);
+  if (recordsError) return toast(recordsError.message, 'error');
+  const existingByQuestion = Object.fromEntries((existingRecords || []).map(record => [record.qustion_id, record]));
+  const existingNote = existingRecords?.find(record => record.notes)?.notes || '';
+  results.innerHTML = `<table id="dataSetupTable" style="min-width:760px">
+    <thead><tr><th>Assigned Member</th><th style="width:45%">Questionnaire</th><th class="data-control-cell">Choose answers</th></tr></thead>
+    <tbody>${rows.map((row, rowIndex) => { const existing = existingByQuestion[row.form.id]; return `<tr data-record-id="${esc(existing?.id || '')}" data-question-id="${esc(row.form.id || '')}" data-member-id="${esc(row.memberId || '')}" data-control-type="${esc(dataFormControlType(row.form))}">
+      <td>${esc(row.memberName)}</td>
+      <td style="width:45%">${esc(row.form.questionnaire || '—')}</td>
+      <td class="data-control-cell">${dataFormAnswerControlHTML(row.form, rowIndex, existing?.answer || '')}</td>
+    </tr>`; }).join('')}</tbody>
+  </table><div class="data-record-notes"><label for="dataRecordNotes">Notes</label><textarea id="dataRecordNotes" placeholder="Add notes...">${esc(existingNote)}</textarea></div><div class="data-record-actions"><button class="btn btn-primary" type="button" onclick="saveSelectedDataRecords()">Save</button></div>`;
+}
+
+function getDataControlAnswer(row) {
+  const checkboxMenu = row.querySelector('.data-checkbox-menu');
+  if (checkboxMenu) return [...checkboxMenu.querySelectorAll('input[type="checkbox"]:checked')].map(input => input.value).join(', ');
+  const radio = row.querySelector('input[type="radio"]:checked');
+  if (radio) return radio.value;
+  return row.querySelector('.data-answer-preview')?.value?.trim() || '';
+}
+
+async function saveSelectedDataRecords() {
+  const eventId = val('dataEventSelect');
+  const memberId = (window._dataSetupRows || []).find(row => row.activity.id === eventId && row.memberName === val('dataMemberSelect'))?.memberId;
+  const rows = [...document.querySelectorAll('#dataSetupTable tbody tr')];
+  if (!eventId || !memberId || !rows.length) return toast('Select an event and member with questionnaires', 'warning');
+  const records = rows.map(row => ({
+    id: row.dataset.recordId || null,
+    activity_id: eventId,
+    collected_by: currentUser.id,
+    qustion_id: row.dataset.questionId || null,
+    answer: getDataControlAnswer(row) || null,
+    control_type: row.dataset.controlType || 'Text box',
+    member_id: memberId,
+    notes: val('dataRecordNotes') || null,
+  }));
+  const results = await Promise.all(records.map(record => {
+    const { id, ...values } = record;
+    return id ? supa.from('data_records').update(values).eq('id', id) : supa.from('data_records').insert(values);
+  }));
+  const error = results.find(result => result.error)?.error;
+  if (error) return toast(error.message, 'error');
+  toast('Data saved successfully', 'success');
+  await showSelectedDataQuestionnaire();
 }
 
 async function exportDataCSV() {
@@ -4466,10 +4697,11 @@ async function renderUserHistory() {
 
 let _modalSaveCb = null;
 
-function showModal(title, bodyHTML, onSave) {
+function showModal(title, bodyHTML, onSave, modalClass = '') {
   _modalSaveCb = onSave;
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalBody').innerHTML    = bodyHTML;
+  document.querySelector('#modal .modal-box').className = `modal-box${modalClass ? ` ${modalClass}` : ''}`;
   const btn = document.getElementById('modalSaveBtn');
   btn.textContent = 'Save'; btn.className = 'btn btn-primary'; btn.disabled = false;
   document.getElementById('modal').classList.add('active');

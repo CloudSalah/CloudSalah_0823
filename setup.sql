@@ -144,6 +144,29 @@ create table if not exists public.data_records (
   created_at    timestamptz  default now()
 );
 
+-- Questionnaire answers may be stored without the legacy person fields.
+alter table public.data_records alter column person_name drop not null;
+alter table public.data_records add column if not exists qustion_id uuid;
+alter table public.data_records add column if not exists answer text;
+alter table public.data_records add column if not exists control_type text;
+alter table public.data_records add column if not exists member_id uuid;
+
+-- ========================
+-- DATA COLLECTION QUESTIONNAIRES
+-- One row defines one question for a data activity. The answer column stores
+-- the control type and selectable values as JSON.
+-- ========================
+create table if not exists public.data_forms (
+  id             uuid         not null default gen_random_uuid(),
+  event_id       uuid         not null references public.activities(id) on delete cascade,
+  questionnaire  varchar,
+  answer         text,
+  event_type_id  smallint,
+  notes          text,
+  constraint data_forms_pkey primary key (id, event_id)
+);
+alter table public.data_forms add column if not exists disp_order smallint;
+
 -- ========================
 -- ASSOCIATION EVENTS
 -- Run this before using Event Type 4 (Associations).
